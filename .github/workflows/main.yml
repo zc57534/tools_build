@@ -11,7 +11,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    
+      - name: Checkout 代码
+        uses: actions/checkout@v4
+
       - name: 使用 Dockerfile 构建镜像
         run: docker build -t static-tools .
 
@@ -29,7 +31,7 @@ jobs:
           docker cp static-container:/bin/echo output/
 
       - name: 上传编译产物
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: static-binaries
           path: output
