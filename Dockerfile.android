@@ -10,13 +10,26 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Set up Android NDK
-RUN wget https://dl.google.com/android/repository/android-ndk-r28b-linux-x86_64.zip \
-    && unzip android-ndk-r28b-linux-x86_64.zip \
-    && mv android-ndk-r28b /opt/android-ndk \
-    && rm android-ndk-r28b-linux-x86_64.zip
+# NDK version
+ENV NDK_VERSION=r28
+ENV NDK=/root/android-ndk-$NDK_VERSION
+ENV TOOLCHAIN=$NDK/toolchains/llvm/prebuilt/linux-x86_64 \
+    HOST=aarch64-linux-android \
+    API=33
+ENV AR=$TOOLCHAIN/bin/llvm-ar \
+    CC=$TOOLCHAIN/bin/$HOST$API-clang \
+    CXX=$TOOLCHAIN/bin/$HOST$API-clang++ \
+    LD=$TOOLCHAIN/bin/ld \
+    RANDLIB=$TOOLCHAIN/bin/llvm-ranlib \
+    STRIP=$TOOLCHAIN/bin/llvm-strip \
+    PREFIX=/root/usr/local
 
-ENV ANDROID_NDK_HOME /opt/android-ndk
+# Download and set up Android NDK
+RUN curl -L -O https://dl.google.com/android/repository/android-ndk-$NDK_VERSION-linux.zip && \
+    unzip -q android-ndk-$NDK_VERSION-linux.zip && \
+    rm android-ndk-$NDK_VERSION-linux.zip
+
+ENV ANDROID_NDK_HOME /root/android-ndk-$NDK_VERSION
 ENV PATH $ANDROID_NDK_HOME:$PATH
 
 # Set up toolchain for static linking
@@ -69,6 +82,6 @@ RUN git clone https://git.savannah.gnu.org/git/tar.git && \
     make install
 
 # Clean up
-RUN rm -rf /opt/toolchain /opt/android-ndk
+RUN rm -rf /opt/toolchain /root/android-ndk-$NDK_VERSION
 
 CMD ["bash"]
