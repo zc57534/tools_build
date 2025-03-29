@@ -1,0 +1,42 @@
+name: Build Static Tools
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout 代码
+        uses: actions/checkout@v3
+
+      - name: 使用 Dockerfile 构建镜像
+        run: docker build -t static-tools .
+
+      - name: 创建容器以便提取编译产物
+        run: docker create --name static-container static-tools
+
+      - name: 提取静态二进制文件
+        run: |
+          mkdir -p output
+          docker cp static-container:/bin/bash output/
+          docker cp static-container:/bin/grep output/
+          docker cp static-container:/usr/bin/jq output/
+          docker cp static-container:/bin/tar output/
+          docker cp static-container:/bin/wget output/
+          docker cp static-container:/bin/echo output/
+
+      - name: 上传编译产物
+        uses: actions/upload-artifact@v3
+        with:
+          name: static-binaries
+          path: output
+
+      - name: 清理容器
+        run: docker rm static-container
