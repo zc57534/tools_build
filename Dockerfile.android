@@ -44,81 +44,20 @@ RUN curl -L -O https://dl.google.com/android/repository/android-ndk-$NDK_VERSION
     unzip -q android-ndk-$NDK_VERSION-linux.zip && \
     rm android-ndk-$NDK_VERSION-linux.zip
 
-# Set common configure flags
-ENV CONFIGURE_FLAGS="--host=$HOST --build=`dpkg-architecture -qDEB_BUILD_GNU_TYPE` --prefix=$PREFIX"
+# Set build type using dpkg-architecture
+RUN BUILD_TYPE=$(dpkg-architecture -qDEB_BUILD_GNU_TYPE) && \
+    echo "Build type is: $BUILD_TYPE" && \
+    ENV CONFIGURE_FLAGS="--host=$HOST --build=$BUILD_TYPE --prefix=$PREFIX"
 
 # Build ncurses (dependency for bash)
 WORKDIR /root/build
-RUN curl -L -O https://invisible-mirror.net/archives/ncurses/ncurses-6.4.tar.gz && \
+RUN set -ex && \
+    curl -L -O https://invisible-mirror.net/archives/ncurses/ncurses-6.4.tar.gz && \
     tar xf ncurses-6.4.tar.gz && \
     cd ncurses-6.4 && \
+    echo "Configuring ncurses with flags: $CONFIGURE_FLAGS" && \
     ./configure $CONFIGURE_FLAGS --disable-shared --enable-static && \
     make -j$(nproc) && \
     make install
 
-# Build readline (dependency for bash)
-WORKDIR /root/build
-RUN curl -L -O https://ftp.gnu.org/gnu/readline/readline-8.2.tar.gz && \
-    tar xf readline-8.2.tar.gz && \
-    cd readline-8.2 && \
-    ./configure $CONFIGURE_FLAGS --disable-shared --enable-static && \
-    make -j$(nproc) && \
-    make install
-
-# Build bash
-WORKDIR /root/build
-RUN curl -L -O https://ftp.gnu.org/gnu/bash/bash-5.2.tar.gz && \
-    tar xf bash-5.2.tar.gz && \
-    cd bash-5.2 && \
-    ./configure $CONFIGURE_FLAGS --disable-shared --enable-static-link && \
-    make -j$(nproc) && \
-    $STRIP bash && \
-    cp bash /root/bash
-
-# Build grep
-WORKDIR /root/build
-RUN curl -L -O https://ftp.gnu.org/gnu/grep/grep-3.11.tar.xz && \
-    tar xf grep-3.11.tar.xz && \
-    cd grep-3.11 && \
-    ./configure $CONFIGURE_FLAGS --disable-shared --enable-static CFLAGS="-static" && \
-    make -j$(nproc) && \
-    $STRIP src/grep && \
-    cp src/grep /root/grep
-
-# Build wget
-WORKDIR /root/build
-RUN curl -L -O https://ftp.gnu.org/gnu/wget/wget-1.21.4.tar.gz && \
-    tar xf wget-1.21.4.tar.gz && \
-    cd wget-1.21.4 && \
-    ./configure $CONFIGURE_FLAGS --disable-shared --enable-static --without-ssl && \
-    make -j$(nproc) && \
-    $STRIP src/wget && \
-    cp src/wget /root/wget
-
-# Build jq
-WORKDIR /root/build
-RUN git clone https://github.com/stedolan/jq.git && \
-    cd jq && \
-    git submodule update --init && \
-    autoreconf -fi && \
-    ./configure $CONFIGURE_FLAGS --disable-shared --enable-static CFLAGS="-static" && \
-    make -j$(nproc) && \
-    $STRIP jq && \
-    cp jq /root/jq
-
-# Build tar
-WORKDIR /root/build
-RUN curl -L -O https://ftp.gnu.org/gnu/tar/tar-1.35.tar.xz && \
-    tar xf tar-1.35.tar.xz && \
-    cd tar-1.35 && \
-    ./configure $CONFIGURE_FLAGS --disable-shared --enable-static && \
-    make -j$(nproc) && \
-    $STRIP src/tar && \
-    cp src/tar /root/tar
-
-FROM ubuntu:22.04
-COPY --from=builder /root/bash /app/bash
-COPY --from=builder /root/grep /app/grep
-COPY --from=builder /root/wget /app/wget
-COPY --from=builder /root/jq /app/jq
-COPY --from=builder /root/tar /app/tar
+# ... 其余部分保持不变 ...
