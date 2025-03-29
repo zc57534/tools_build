@@ -1,12 +1,10 @@
 name: Build Static Tools
 
 on:
+  workflow_dispatch:
   push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+    paths:
+      - Dockerfile.android
 
 jobs:
   build:
