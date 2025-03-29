@@ -1,42 +1,45 @@
-name: Android Static Build
+name: Build Android Utils
 
 on:
   workflow_dispatch:
   push:
-    paths:
-      - Dockerfile.android
-
-permissions: read-all
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
-
+    runs-on: ubuntu-latest
+    
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
     - name: Build Docker image
-      uses: docker/build-push-action@v6
+      uses: docker/build-push-action@v5
       with:
-        file: Dockerfile.android
         context: .
-        tags: termux-tools-builder:latest
+        file: Dockerfile.android
+        push: false
         load: true
+        tags: android-utils:latest
 
-    - name: Extract Binaries
+    - name: Copy binaries from container
       run: |
-        mkdir -p release
-        container_id=$(docker create termux-tools-builder:latest)
-        docker cp $container_id:/app/ release/
-        docker rm -f $container_id
-        ls -lh release/app/
+        id=$(docker create android-utils:latest)
+        mkdir -p build
+        docker cp $id:/app/bash ./build/
+        docker cp $id:/app/grep ./build/
+        docker cp $id:/app/wget ./build/
+        docker cp $id:/app/jq ./build/
+        docker cp $id:/app/tar ./build/
+        docker rm $id
 
-    - name: Upload Artifacts
+    - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: termux-static-tools-v4
-        path: release/app/*
-        retention-days: 3
+        name: android-utils
+        path: build/
