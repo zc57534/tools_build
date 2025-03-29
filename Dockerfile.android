@@ -1,14 +1,48 @@
-# 使用 arm64 架构的 Alpine 作为构建环境（如目标为 x86 可换成 alpine:latest）
-FROM arm64v8/alpine:latest AS builder
-# 安装基础编译工具和依赖
-RUN apk add --no-cache build-base wget tar xz autoconf automake libtool bzip2
+# 基于 Ubuntu 22.04 作为构建环境
+FROM ubuntu:22.04 AS builder
 
-# 定义全局静态链接标志
+# 安装编译工具和依赖（注意这里使用编译方式安装依赖，而不是直接 apt-get 安装预编译包）
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      build-essential \
+      wget \
+      unzip \
+      tar \
+      xz-utils \
+      bzip2 \
+      autoconf \
+      automake \
+      libtool \
+      pkg-config \
+      clang \
+      ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+# 下载并解压 Android NDK（以 r25b 为例）
+ENV ANDROID_NDK_VERSION=r28
+RUN wget https://dl.google.com/android/repository/android-ndk-${ANDROID_NDK_VERSION}-linux.zip && \
+    unzip android-ndk-${ANDROID_NDK_VERSION}-linux.zip && \
+    rm android-ndk-${ANDROID_NDK_VERSION}-linux.zip
+
+ENV ANDROID_NDK=/android-ndk-${ANDROID_NDK_VERSION}
+
+# 配置交叉编译环境：目标为 Android aarch64 (arm64)
+ENV TARGET=aarch64-linux-android
+ENV API=21
+ENV PATH=${ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin:${PATH}
+ENV CC=${TARGET}${API}-clang
+ENV CXX=${TARGET}${API}-clang++
+ENV AR=llvm-ar
+ENV AS=llvm-as
+ENV LD=ld.lld
+ENV RANLIB=llvm-ranlib
+
+# 设置静态链接参数
+ENV CFLAGS="-static"
 ENV LDFLAGS="-static"
 
-# 创建输出目录
+# 创建输出目录，后续所有软件安装到 /output 目录中
 RUN mkdir -p /output
-
 WORKDIR /src
 
 # ---------------------------
@@ -17,8 +51,8 @@ WORKDIR /src
 RUN wget http://ftp.gnu.org/gnu/bash/bash-5.2.tar.gz && \
     tar zxvf bash-5.2.tar.gz
 WORKDIR /src/bash-5.2
-RUN ./configure --prefix=/usr LDFLAGS="-static" && \
-    make LDFLAGS="-static" && \
+RUN ./configure --host=${TARGET} --prefix=/usr LDFLAGS="-static" && \
+    make -j$(nproc) LDFLAGS="-static" && \
     make install DESTDIR=/output
 
 # ---------------------------
@@ -28,8 +62,8 @@ WORKDIR /src
 RUN wget http://ftp.gnu.org/gnu/grep/grep-3.7.tar.xz && \
     tar Jxvf grep-3.7.tar.xz
 WORKDIR /src/grep-3.7
-RUN ./configure --prefix=/usr LDFLAGS="-static" && \
-    make LDFLAGS="-static" && \
+RUN ./configure --host=${TARGET} --prefix=/usr LDFLAGS="-static" && \
+    make -j$(nproc) LDFLAGS="-static" && \
     make install DESTDIR=/output
 
 # ---------------------------
@@ -40,8 +74,8 @@ RUN wget https://github.com/stedolan/jq/releases/download/jq-1.6/jq-1.6.tar.gz &
     tar zxvf jq-1.6.tar.gz
 WORKDIR /src/jq-1.6
 RUN autoreconf -fi && \
-    ./configure --prefix=/usr LDFLAGS="-static" && \
-    make LDFLAGS="-static" && \
+    ./configure --host=${TARGET} --prefix=/usr LDFLAGS="-static" && \
+    make -j$(nproc) LDFLAGS="-static" && \
     make install DESTDIR=/output
 
 # ---------------------------
@@ -51,8 +85,8 @@ WORKDIR /src
 RUN wget http://ftp.gnu.org/gnu/tar/tar-1.34.tar.gz && \
     tar zxvf tar-1.34.tar.gz
 WORKDIR /src/tar-1.34
-RUN ./configure --prefix=/usr LDFLAGS="-static" && \
-    make LDFLAGS="-static" && \
+RUN ./configure --host=${TARGET} --prefix=/usr LDFLAGS="-static" && \
+    make -j$(nproc) LDFLAGS="-static" && \
     make install DESTDIR=/output
 
 # ---------------------------
@@ -62,28 +96,26 @@ WORKDIR /src
 RUN wget https://ftp.gnu.org/gnu/wget/wget-1.21.2.tar.gz && \
     tar zxvf wget-1.21.2.tar.gz
 WORKDIR /src/wget-1.21.2
-RUN ./configure --prefix=/usr LDFLAGS="-static" && \
-    make LDFLAGS="-static" && \
+RUN ./configure --host=${TARGET} --prefix=/usr LDFLAGS="-static" && \
+    make -j$(nproc) LDFLAGS="-static" && \
     make install DESTDIR=/output
 
 # ---------------------------
-# 编译 busybox，用于提供单独的 echo 命令
-# busybox 默认集成了很多命令，可将 busybox 复制到 /output/bin/echo
+# 编译 busybox（用于提供单独的 echo 命令）
+# busybox 默认整合了大量命令，这里仅将编译后的 busybox 拷贝为 echo
 # ---------------------------
 WORKDIR /src
 RUN wget https://busybox.net/downloads/busybox-1.35.0.tar.bz2 && \
     tar jxvf busybox-1.35.0.tar.bz2
 WORKDIR /src/busybox-1.35.0
-# 配置为静态编译（启用 CONFIG_STATIC）
 RUN make defconfig && \
     sed -i 's/# CONFIG_STATIC is not set/CONFIG_STATIC=y/' .config && \
-    make && \
+    make -j$(nproc) && \
     mkdir -p /output/bin && cp busybox /output/bin/echo
 
 # ---------------------------
-# 最终镜像（将 /output 内容作为根文件系统）
+# 最终镜像：将 /output 内容作为根文件系统
 # ---------------------------
 FROM scratch
 COPY --from=builder /output /
-# 默认启动 bash，可根据需要调整
 CMD ["/bin/bash"]
