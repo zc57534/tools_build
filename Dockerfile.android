@@ -1,123 +1,124 @@
-# vim: ft=dockerfile:
 FROM ubuntu:22.04 as builder
+MAINTAINER Android Utils Builder
 
 WORKDIR /root
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-      unzip bzip2 make binutils autoconf automake autotools-dev \
-      libtool pkg-config git curl ca-certificates xz-utils && \
+      build-essential \
+      unzip \
+      bzip2 \
+      make \
+      binutils \
+      autoconf \
+      automake \
+      autotools-dev \
+      autopoint \
+      libtool \
+      pkg-config \
+      git \
+      dpkg-dev \
+      curl \
+      ca-certificates \
+      texinfo \
+      python3 \
+      bison \
+      flex && \
     rm -rf /var/cache/apt/*
 
-# NDK 配置
+# NDK setup
 ENV NDK_VERSION=r28
-ENV NDK=/root/android-ndk-${NDK_VERSION}
-ENV TOOLCHAIN=${NDK}/toolchains/llvm/prebuilt/linux-x86_64 \
+ENV NDK=/root/android-ndk-$NDK_VERSION
+ENV TOOLCHAIN=$NDK/toolchains/llvm/prebuilt/linux-x86_64 \
     HOST=aarch64-linux-android \
     API=33
-ENV AR=${TOOLCHAIN}/bin/llvm-ar \
-    CC=${TOOLCHAIN}/bin/${HOST}${API}-clang \
-    CXX=${TOOLCHAIN}/bin/${HOST}${API}-clang++ \
-    STRIP=${TOOLCHAIN}/bin/llvm-strip \
+ENV AR=$TOOLCHAIN/bin/llvm-ar \
+    CC=$TOOLCHAIN/bin/$HOST$API-clang \
+    CXX=$TOOLCHAIN/bin/$HOST$API-clang++ \
+    LD=$TOOLCHAIN/bin/ld \
+    RANLIB=$TOOLCHAIN/bin/llvm-ranlib \
+    STRIP=$TOOLCHAIN/bin/llvm-strip \
     PREFIX=/root/usr/local
 
-# 下载 NDK
-RUN curl -L -O https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux.zip && \
-    unzip -q android-ndk-${NDK_VERSION}-linux.zip && \
-    rm android-ndk-${NDK_VERSION}-linux.zip
+# Download NDK
+RUN curl -L -O https://dl.google.com/android/repository/android-ndk-$NDK_VERSION-linux.zip && \
+    unzip -q android-ndk-$NDK_VERSION-linux.zip && \
+    rm android-ndk-$NDK_VERSION-linux.zip
 
-# 编译环境变量
-ENV CFLAGS="-static -Os" \
-    LDFLAGS="-static -s" \
-    PKG_CONFIG_PATH="${PREFIX}/lib/pkgconfig"
+# Set common configure flags
+ENV CONFIGURE_FLAGS="--host=$HOST --build=`dpkg-architecture -qDEB_BUILD_GNU_TYPE` --prefix=$PREFIX"
 
-# 编译基础依赖
+# Build ncurses (dependency for bash)
 WORKDIR /root/build
+RUN curl -L -O https://invisible-mirror.net/archives/ncurses/ncurses-6.4.tar.gz && \
+    tar xf ncurses-6.4.tar.gz && \
+    cd ncurses-6.4 && \
+    ./configure $CONFIGURE_FLAGS --disable-shared --enable-static && \
+    make -j$(nproc) && \
+    make install
 
-# 编译 zlib
-RUN curl -L https://zlib.net/zlib-1.3.1.tar.gz | tar xz && \
-    cd zlib-1.3.1 && \
-    CC=${CC} ./configure --static --prefix=${PREFIX} && \
-    make -j$(nproc) install
+# Build readline (dependency for bash)
+WORKDIR /root/build
+RUN curl -L -O https://ftp.gnu.org/gnu/readline/readline-8.2.tar.gz && \
+    tar xf readline-8.2.tar.gz && \
+    cd readline-8.2 && \
+    ./configure $CONFIGURE_FLAGS --disable-shared --enable-static && \
+    make -j$(nproc) && \
+    make install
 
-# 修复 termcap.c 文件，添加头文件
-RUN curl -L https://ftp.gnu.org/gnu/bash/bash-5.2.tar.gz | tar xz && \
+# Build bash
+WORKDIR /root/build
+RUN curl -L -O https://ftp.gnu.org/gnu/bash/bash-5.2.tar.gz && \
+    tar xf bash-5.2.tar.gz && \
     cd bash-5.2 && \
-    sed -i '1i#include <unistd.h>' lib/termcap/termcap.c
+    ./configure $CONFIGURE_FLAGS --disable-shared --enable-static-link && \
+    make -j$(nproc) && \
+    $STRIP bash && \
+    cp bash /root/bash
 
-# 编译工具链
+# Build grep
 WORKDIR /root/build
-
-# 编译 bash (5.2)
-RUN cd bash-5.2 && \
-    ./configure \
-      --host=${HOST} \
-      --prefix=${PREFIX} \
-      --without-bash-malloc \
-      --enable-static-link \
-      CFLAGS="${CFLAGS}" LDFLAGS="${LDFLAGS}" && \
-    make -j$(nproc) install
-
-# 编译 grep (3.11)
-RUN curl -L https://ftp.gnu.org/gnu/grep/grep-3.11.tar.xz | tar xJ && \
+RUN curl -L -O https://ftp.gnu.org/gnu/grep/grep-3.11.tar.xz && \
+    tar xf grep-3.11.tar.xz && \
     cd grep-3.11 && \
-    ./configure \
-      --host=${HOST} \
-      --prefix=${PREFIX} \
-      --disable-nls \
-      --enable-static \
-      CFLAGS="${CFLAGS}" LDFLAGS="${LDFLAGS}" && \
-    make -j$(nproc) install
+    ./configure $CONFIGURE_FLAGS --disable-shared --enable-static CFLAGS="-static" && \
+    make -j$(nproc) && \
+    $STRIP src/grep && \
+    cp src/grep /root/grep
 
-# 编译 wget (1.21.4)
-RUN curl -L https://ftp.gnu.org/gnu/wget/wget-1.21.4.tar.gz | tar xz && \
+# Build wget
+WORKDIR /root/build
+RUN curl -L -O https://ftp.gnu.org/gnu/wget/wget-1.21.4.tar.gz && \
+    tar xf wget-1.21.4.tar.gz && \
     cd wget-1.21.4 && \
-    ./configure \
-      --host=${HOST} \
-      --prefix=${PREFIX} \
-      --disable-nls \
-      --disable-ipv6 \
-      --enable-static \
-      --with-ssl=openssl \
-      CFLAGS="${CFLAGS} -I${PREFIX}/include" \
-      LDFLAGS="${LDFLAGS} -L${PREFIX}/lib" && \
-    make -j$(nproc) install
+    ./configure $CONFIGURE_FLAGS --disable-shared --enable-static --without-ssl && \
+    make -j$(nproc) && \
+    $STRIP src/wget && \
+    cp src/wget /root/wget
 
-# 编译 jq (1.7)
-RUN git clone --depth 1 --branch jq-1.7 https://github.com/jqlang/jq.git && \
+# Build jq
+WORKDIR /root/build
+RUN git clone https://github.com/stedolan/jq.git && \
     cd jq && \
     git submodule update --init && \
     autoreconf -fi && \
-    ./configure \
-      --host=${HOST} \
-      --prefix=${PREFIX} \
-      --enable-static \
-      --disable-maintainer-mode \
-      CFLAGS="${CFLAGS}" LDFLAGS="${LDFLAGS}" && \
-    make -j$(nproc) install
+    ./configure $CONFIGURE_FLAGS --disable-shared --enable-static CFLAGS="-static" && \
+    make -j$(nproc) && \
+    $STRIP jq && \
+    cp jq /root/jq
 
-# 编译 coreutils (9.4) 用于获取静态版 echo
-RUN curl -L https://ftp.gnu.org/gnu/coreutils/coreutils-9.4.tar.xz | tar xJ && \
-    cd coreutils-9.4 && \
-    ./configure \
-      --host=${HOST} \
-      --prefix=${PREFIX} \
-      --enable-static \
-      --disable-nls \
-      CFLAGS="${CFLAGS}" LDFLAGS="${LDFLAGS}" && \
-    make -j$(nproc) install
-
-# 编译 tar (1.35)
-RUN curl -L https://ftp.gnu.org/gnu/tar/tar-1.35.tar.gz | tar xz && \
+# Build tar
+WORKDIR /root/build
+RUN curl -L -O https://ftp.gnu.org/gnu/tar/tar-1.35.tar.xz && \
+    tar xf tar-1.35.tar.xz && \
     cd tar-1.35 && \
-    ./configure \
-      --host=${HOST} \
-      --prefix=${PREFIX} \
-      --enable-static \
-      --disable-nls \
-      CFLAGS="${CFLAGS}" LDFLAGS="${LDFLAGS}" && \
-    make -j$(nproc) install
+    ./configure $CONFIGURE_FLAGS --disable-shared --enable-static && \
+    make -j$(nproc) && \
+    $STRIP src/tar && \
+    cp src/tar /root/tar
 
-# 最终镜像
 FROM ubuntu:22.04
-COPY --from=builder /root/usr/local/bin/ /app/
-RUN find /app -executable -type f -exec strip {} \;  # 二次精简二进制体积
+COPY --from=builder /root/bash /app/bash
+COPY --from=builder /root/grep /app/grep
+COPY --from=builder /root/wget /app/wget
+COPY --from=builder /root/jq /app/jq
+COPY --from=builder /root/tar /app/tar
