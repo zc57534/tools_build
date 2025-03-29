@@ -13,9 +13,9 @@ jobs:
     steps:
       - name: Checkout 代码
         uses: actions/checkout@v4
-
+        
       - name: 使用 Dockerfile 构建镜像
-        run: docker build -t static-tools .
+        run: docker build -f Dockerfile.android -t static-tools .
 
       - name: 创建容器以便提取编译产物
         run: docker create --name static-container static-tools
@@ -38,4 +38,3 @@ jobs:
 
       - name: 清理容器
         run: docker rm static-container
-
