@@ -25,7 +25,7 @@ ENV AR=$TOOLCHAIN/bin/llvm-ar \
     PREFIX=/root/usr/local
 
 # Download and set up Android NDK
-RUN curl -L -O https://dl.google.com/android/repository/android-ndk-$NDK_VERSION-linux-x86_64.zip && \
+RUN curl -L -O https://dl.google.com/android/repository/android-ndk-$NDK_VERSION-linux.zip && \
     unzip -q android-ndk-$NDK_VERSION-linux.zip && \
     rm android-ndk-$NDK_VERSION-linux.zip
 
