@@ -1,87 +1,79 @@
-FROM ubuntu:22.04
+# vim: ft=dockerfile:
+# 基础镜像使用 Ubuntu 22.04
+FROM ubuntu:22.04 as builder
 
-# Install required dependencies
-RUN apt-get update && apt-get install -y \
-    wget \
-    curl \
-    build-essential \
-    python3 \
-    unzip \
-    git \
-    && rm -rf /var/lib/apt/lists/*
-
-# NDK version
-ENV NDK_VERSION=r28
-ENV NDK=/root/android-ndk-$NDK_VERSION
-ENV TOOLCHAIN=$NDK/toolchains/llvm/prebuilt/linux-x86_64 \
+# 环境变量配置
+ENV NDK_VERSION=r28 \
+    NDK=/android-ndk-${NDK_VERSION} \
     HOST=aarch64-linux-android \
-    API=33
-ENV AR=$TOOLCHAIN/bin/llvm-ar \
-    CC=$TOOLCHAIN/bin/$HOST$API-clang \
-    CXX=$TOOLCHAIN/bin/$HOST$API-clang++ \
-    LD=$TOOLCHAIN/bin/ld \
-    RANDLIB=$TOOLCHAIN/bin/llvm-ranlib \
-    STRIP=$TOOLCHAIN/bin/llvm-strip \
-    PREFIX=/root/usr/local
+    API=33 \
+    TOOLCHAIN=${NDK}/toolchains/llvm/prebuilt/linux-x86_64 \
+    PREFIX=/usr/local
 
-# Download and set up Android NDK
-RUN curl -L -O https://dl.google.com/android/repository/android-ndk-$NDK_VERSION-linux.zip && \
-    unzip -q android-ndk-$NDK_VERSION-linux.zip && \
-    rm android-ndk-$NDK_VERSION-linux.zip
+# 安装基础编译工具
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        wget git ca-certificates \
+        make automake autoconf libtool \
+        bzip2 xz-utils unzip && \
+    rm -rf /var/lib/apt/lists/*
 
-ENV ANDROID_NDK_HOME /root/android-ndk-$NDK_VERSION
-ENV PATH $ANDROID_NDK_HOME:$PATH
+# 下载并解压 NDK
+RUN wget -q https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux.zip && \
+    unzip -q android-ndk-${NDK_VERSION}-linux.zip && \
+    rm android-ndk-${NDK_VERSION}-linux.zip
 
-# Set up toolchain for static linking
-RUN $ANDROID_NDK_HOME/build/tools/make_standalone_toolchain.py --arch arm64 --api 21 --install-dir /opt/toolchain
+# 工具链环境变量
+ENV CC=${TOOLCHAIN}/bin/${HOST}${API}-clang \
+    CXX=${TOOLCHAIN}/bin/${HOST}${API}-clang++ \
+    AR=${TOOLCHAIN}/bin/llvm-ar \
+    RANLIB=${TOOLCHAIN}/bin/llvm-ranlib \
+    STRIP=${TOOLCHAIN}/bin/llvm-strip \
+    LDFLAGS="-static"
 
-ENV PATH /opt/toolchain/bin:$PATH
-ENV CC aarch64-linux-android21-clang
-ENV CXX aarch64-linux-android21-clang++
-
-# Clone and build bash
-RUN git clone https://git.savannah.gnu.org/git/bash.git && \
-    cd bash && \
-    ./configure --host=aarch64-linux-android --enable-static-link --without-bash-malloc && \
-    make && \
+# 编译 bash
+RUN wget -q https://ftp.gnu.org/gnu/bash/bash-5.2.tar.gz && \
+    tar xzf bash-5.2.tar.gz && \
+    cd bash-5.2 && \
+    ./configure \
+        --host=${HOST} \
+        --enable-static-link \
+        --without-bash-malloc && \
+    make -j$(nproc) && \
     make install
 
-# Clone and build grep
-RUN git clone https://git.savannah.gnu.org/git/grep.git && \
-    cd grep && \
-    ./configure --host=aarch64-linux-android --enable-static-link && \
-    make && \
+# 编译 grep
+RUN wget -q https://ftp.gnu.org/gnu/grep/grep-3.11.tar.xz && \
+    tar xJf grep-3.11.tar.xz && \
+    cd grep-3.11 && \
+    ./configure \
+        --host=${HOST} \
+        --disable-shared && \
+    make -j$(nproc) LDFLAGS="-static" && \
     make install
 
-# Clone and build wget
-RUN git clone https://git.savannah.gnu.org/git/wget.git && \
-    cd wget && \
-    ./configure --host=aarch64-linux-android --enable-static-link && \
-    make && \
+# 编译 wget
+RUN wget -q https://ftp.gnu.org/gnu/wget/wget-1.21.4.tar.gz && \
+    tar xzf wget-1.21.4.tar.gz && \
+    cd wget-1.21.4 && \
+    ./configure \
+        --host=${HOST} \
+        --disable-shared \
+        --with-ssl=openssl && \
+    make -j$(nproc) LDFLAGS="-static" && \
     make install
 
-# Clone and build echo
-RUN git clone https://git.savannah.gnu.org/git/coreutils.git && \
-    cd coreutils && \
-    ./configure --host=aarch64-linux-android --enable-static-link && \
-    make && \
-    make install
-
-# Clone and build jq
-RUN git clone https://github.com/stedolan/jq.git && \
+# 编译 jq
+RUN git clone --depth 1 https://github.com/stedolan/jq.git && \
     cd jq && \
-    ./configure --host=aarch64-linux-android --enable-static-link && \
-    make && \
+    autoreconf -fi && \
+    ./configure \
+        --host=${HOST} \
+        --disable-shared \
+        --with-oniguruma=builtin && \
+    make -j$(nproc) LDFLAGS="-static" && \
     make install
 
-# Clone and build tar
-RUN git clone https://git.savannah.gnu.org/git/tar.git && \
-    cd tar && \
-    ./configure --host=aarch64-linux-android --enable-static-link && \
-    make && \
-    make install
-
-# Clean up
-RUN rm -rf /opt/toolchain /root/android-ndk-$NDK_VERSION
-
-CMD ["bash"]
+# 最终阶段
+FROM ubuntu:22.04
+COPY --from=builder /usr/local/bin/ /termux-tools/
