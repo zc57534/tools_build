@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # NDK version
-ENV NDK_VERSION=r28
+ENV NDK_VERSION=r26b
 ENV NDK=/root/android-ndk-$NDK_VERSION
 ENV TOOLCHAIN=$NDK/toolchains/llvm/prebuilt/linux-x86_64 \
     HOST=aarch64-linux-android \
@@ -25,7 +25,7 @@ ENV AR=$TOOLCHAIN/bin/llvm-ar \
     PREFIX=/root/usr/local
 
 # Download and set up Android NDK
-RUN curl -L -O https://dl.google.com/android/repository/android-ndk-$NDK_VERSION-linux.zip && \
+RUN curl -L -O https://dl.google.com/android/repository/android-ndk-$NDK_VERSION-linux-x86_64.zip && \
     unzip -q android-ndk-$NDK_VERSION-linux.zip && \
     rm android-ndk-$NDK_VERSION-linux.zip
 
