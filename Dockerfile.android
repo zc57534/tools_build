@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # NDK version
-ENV NDK_VERSION=r26b
+ENV NDK_VERSION=r28
 ENV NDK=/root/android-ndk-$NDK_VERSION
 ENV TOOLCHAIN=$NDK/toolchains/llvm/prebuilt/linux-x86_64 \
     HOST=aarch64-linux-android \
