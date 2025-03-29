@@ -11,19 +11,30 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout 代码
+        uses: actions/checkout@v4
+        
+      - name: 使用 Dockerfile 构建镜像
+        run: docker build -f Dockerfile.android -t static-tools .
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v1
+      - name: 创建容器以便提取编译产物
+        run: docker create --name static-container static-tools
 
-    - name: Build Docker image
-      uses: docker/build-push-action@v3
-      with:
-        context: .
-        file: Dockerfile
-        push: false
-        tags: build-termux:latest
+      - name: 提取静态二进制文件
+        run: |
+          mkdir -p output
+          docker cp static-container:/bin/bash output/
+          docker cp static-container:/bin/grep output/
+          docker cp static-container:/usr/bin/jq output/
+          docker cp static-container:/bin/tar output/
+          docker cp static-container:/bin/wget output/
+          docker cp static-container:/bin/echo output/
 
-    - name: Run Docker container
-      run: docker run --rm build-termux:latest
+      - name: 上传编译产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: static-binaries
+          path: output
+
+      - name: 清理容器
+        run: docker rm static-container
