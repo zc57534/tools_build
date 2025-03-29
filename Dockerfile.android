@@ -1,121 +1,74 @@
-# 基于 Ubuntu 22.04 作为构建环境
-FROM ubuntu:22.04 AS builder
+FROM ubuntu:22.04
 
-# 安装编译工具和依赖（注意这里使用编译方式安装依赖，而不是直接 apt-get 安装预编译包）
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-      build-essential \
-      wget \
-      unzip \
-      tar \
-      xz-utils \
-      bzip2 \
-      autoconf \
-      automake \
-      libtool \
-      pkg-config \
-      clang \
-      ca-certificates && \
-    rm -rf /var/lib/apt/lists/*
+# Install required dependencies
+RUN apt-get update && apt-get install -y \
+    wget \
+    curl \
+    build-essential \
+    python3 \
+    unzip \
+    git \
+    && rm -rf /var/lib/apt/lists/*
 
-# 下载并解压 Android NDK（以 r25b 为例）
-ENV ANDROID_NDK_VERSION=r28
-RUN wget https://dl.google.com/android/repository/android-ndk-${ANDROID_NDK_VERSION}-linux.zip && \
-    unzip android-ndk-${ANDROID_NDK_VERSION}-linux.zip && \
-    rm android-ndk-${ANDROID_NDK_VERSION}-linux.zip
+# Set up Android NDK
+RUN wget https://dl.google.com/android/repository/android-ndk-r28b-linux-x86_64.zip \
+    && unzip android-ndk-r28b-linux-x86_64.zip \
+    && mv android-ndk-r28b /opt/android-ndk \
+    && rm android-ndk-r28b-linux-x86_64.zip
 
-ENV ANDROID_NDK=/android-ndk-${ANDROID_NDK_VERSION}
+ENV ANDROID_NDK_HOME /opt/android-ndk
+ENV PATH $ANDROID_NDK_HOME:$PATH
 
-# 配置交叉编译环境：目标为 Android aarch64 (arm64)
-ENV TARGET=aarch64-linux-android
-ENV API=21
-ENV PATH=${ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x86_64/bin:${PATH}
-ENV CC=${TARGET}${API}-clang
-ENV CXX=${TARGET}${API}-clang++
-ENV AR=llvm-ar
-ENV AS=llvm-as
-ENV LD=ld.lld
-ENV RANLIB=llvm-ranlib
+# Set up toolchain for static linking
+RUN $ANDROID_NDK_HOME/build/tools/make_standalone_toolchain.py --arch arm64 --api 21 --install-dir /opt/toolchain
 
-# 设置静态链接参数
-ENV CFLAGS="-static"
-ENV LDFLAGS="-static"
+ENV PATH /opt/toolchain/bin:$PATH
+ENV CC aarch64-linux-android21-clang
+ENV CXX aarch64-linux-android21-clang++
 
-# 创建输出目录，后续所有软件安装到 /output 目录中
-RUN mkdir -p /output
-WORKDIR /src
+# Clone and build bash
+RUN git clone https://git.savannah.gnu.org/git/bash.git && \
+    cd bash && \
+    ./configure --host=aarch64-linux-android --enable-static-link --without-bash-malloc && \
+    make && \
+    make install
 
-# ---------------------------
-# 编译 bash
-# ---------------------------
-RUN wget http://ftp.gnu.org/gnu/bash/bash-5.2.tar.gz && \
-    tar zxvf bash-5.2.tar.gz
-WORKDIR /src/bash-5.2
-RUN ./configure --host=${TARGET} --prefix=/usr LDFLAGS="-static" && \
-    make -j$(nproc) LDFLAGS="-static" && \
-    make install DESTDIR=/output
+# Clone and build grep
+RUN git clone https://git.savannah.gnu.org/git/grep.git && \
+    cd grep && \
+    ./configure --host=aarch64-linux-android --enable-static-link && \
+    make && \
+    make install
 
-# ---------------------------
-# 编译 grep
-# ---------------------------
-WORKDIR /src
-RUN wget http://ftp.gnu.org/gnu/grep/grep-3.7.tar.xz && \
-    tar Jxvf grep-3.7.tar.xz
-WORKDIR /src/grep-3.7
-RUN ./configure --host=${TARGET} --prefix=/usr LDFLAGS="-static" && \
-    make -j$(nproc) LDFLAGS="-static" && \
-    make install DESTDIR=/output
+# Clone and build wget
+RUN git clone https://git.savannah.gnu.org/git/wget.git && \
+    cd wget && \
+    ./configure --host=aarch64-linux-android --enable-static-link && \
+    make && \
+    make install
 
-# ---------------------------
-# 编译 jq
-# ---------------------------
-WORKDIR /src
-RUN wget https://github.com/stedolan/jq/releases/download/jq-1.6/jq-1.6.tar.gz && \
-    tar zxvf jq-1.6.tar.gz
-WORKDIR /src/jq-1.6
-RUN autoreconf -fi && \
-    ./configure --host=${TARGET} --prefix=/usr LDFLAGS="-static" && \
-    make -j$(nproc) LDFLAGS="-static" && \
-    make install DESTDIR=/output
+# Clone and build echo
+RUN git clone https://git.savannah.gnu.org/git/coreutils.git && \
+    cd coreutils && \
+    ./configure --host=aarch64-linux-android --enable-static-link && \
+    make && \
+    make install
 
-# ---------------------------
-# 编译 tar（GNU tar）
-# ---------------------------
-WORKDIR /src
-RUN wget http://ftp.gnu.org/gnu/tar/tar-1.34.tar.gz && \
-    tar zxvf tar-1.34.tar.gz
-WORKDIR /src/tar-1.34
-RUN ./configure --host=${TARGET} --prefix=/usr LDFLAGS="-static" && \
-    make -j$(nproc) LDFLAGS="-static" && \
-    make install DESTDIR=/output
+# Clone and build jq
+RUN git clone https://github.com/stedolan/jq.git && \
+    cd jq && \
+    ./configure --host=aarch64-linux-android --enable-static-link && \
+    make && \
+    make install
 
-# ---------------------------
-# 编译 wget
-# ---------------------------
-WORKDIR /src
-RUN wget https://ftp.gnu.org/gnu/wget/wget-1.21.2.tar.gz && \
-    tar zxvf wget-1.21.2.tar.gz
-WORKDIR /src/wget-1.21.2
-RUN ./configure --host=${TARGET} --prefix=/usr LDFLAGS="-static" && \
-    make -j$(nproc) LDFLAGS="-static" && \
-    make install DESTDIR=/output
+# Clone and build tar
+RUN git clone https://git.savannah.gnu.org/git/tar.git && \
+    cd tar && \
+    ./configure --host=aarch64-linux-android --enable-static-link && \
+    make && \
+    make install
 
-# ---------------------------
-# 编译 busybox（用于提供单独的 echo 命令）
-# busybox 默认整合了大量命令，这里仅将编译后的 busybox 拷贝为 echo
-# ---------------------------
-WORKDIR /src
-RUN wget https://busybox.net/downloads/busybox-1.35.0.tar.bz2 && \
-    tar jxvf busybox-1.35.0.tar.bz2
-WORKDIR /src/busybox-1.35.0
-RUN make defconfig && \
-    sed -i 's/# CONFIG_STATIC is not set/CONFIG_STATIC=y/' .config && \
-    make -j$(nproc) && \
-    mkdir -p /output/bin && cp busybox /output/bin/echo
+# Clean up
+RUN rm -rf /opt/toolchain /opt/android-ndk
 
-# ---------------------------
-# 最终镜像：将 /output 内容作为根文件系统
-# ---------------------------
-FROM scratch
-COPY --from=builder /output /
-CMD ["/bin/bash"]
+CMD ["bash"]
