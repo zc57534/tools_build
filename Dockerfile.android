@@ -56,7 +56,7 @@ RUN set -ex && \
     tar xf ncurses-6.4.tar.gz && \
     cd ncurses-6.4 && \
     echo "Configuring ncurses with flags: $CONFIGURE_FLAGS" && \
-    ./configure --host=$HOST --prefix=$PREFIX --disable-shared --enable-static && \
+    ./configure --host=$HOST --prefix=$PREFIX --disable-shared --enable-static --without-tests && \
     make -j$(nproc) && \
     make install
 
