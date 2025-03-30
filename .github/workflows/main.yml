@@ -38,7 +38,7 @@ jobs:
         # 预期输出：ELF 64-bit LSB executable... statically linked
 
     - name: Upload Artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: bash-static-arm64
         path: bash-5.2/bash
