@@ -1,44 +1,44 @@
 name: Build Static Echo for ZeroTermux
 
 on:
-  workflow_dispatch:  # 仅手动触发
+  workflow_dispatch:
 
 jobs:
   build-echo:
     runs-on: ubuntu-latest
     steps:
-    - name: 安装完整交叉编译工具链
+    - name: 安装依赖
       run: |
         sudo apt-get update
         sudo apt-get install -y \
           gcc-aarch64-linux-gnu \
-          binutils-aarch64-linux-gnu \
-          libc6-dev-arm64-cross
+          autoconf automake libtool \
+          binutils-aarch64-linux-gnu
 
-    - name: 下载 Coreutils 源码
+    - name: 下载并解压源码
       run: |
         wget https://ftp.gnu.org/gnu/coreutils/coreutils-9.4.tar.xz
         tar -xf coreutils-9.4.tar.xz
 
-    - name: 配置并编译（修复版）
+    - name: 更新 Autotools 配置文件
+      run: |
+        cd coreutils-9.4
+        autoreconf -fi  # 重新生成配置脚本
+
+    - name: 配置并编译
       run: |
         cd coreutils-9.4
         CC="aarch64-linux-gnu-gcc" ./configure \
           --host=aarch64-linux-gnu \
-          --enable-static-link \          # 强制静态链接
-          --disable-shared \              # 禁用动态库
-          --disable-libstdbuf \           # 修复关键错误
+          --enable-static-link \
+          --disable-shared \
+          --disable-libstdbuf \
           CFLAGS="-static -Os" \
-          LDFLAGS="-static -Wl,--static"  # 强制静态链接器行为
-        
-        make -j$(nproc)  # 开始编译
+          LDFLAGS="-static -Wl,--static"
+        make -j$(nproc)
 
-    - name: 验证二进制文件
-      run: |
-        file coreutils-9.4/src/echo
-        # 预期输出：ELF 64-bit LSB executable... statically linked
-
-    - name: 上传静态编译的 echo
+    - name: 验证并上传
+      run: file coreutils-9.4/src/echo  # 检查静态链接
       uses: actions/upload-artifact@v4
       with:
         name: echo-static-arm64
