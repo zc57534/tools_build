@@ -43,3 +43,8 @@ jobs:
       with:
         name: android-utils
         path: build/
+        
+    - name: Debug Info
+      run: |
+        docker run --rm termux-tools-builder:latest nm /app/bash-static | grep -i strtoimax
+        docker run --rm termux-tools-builder:latest readelf -s /app/bash-static | grep -i strtoimax
