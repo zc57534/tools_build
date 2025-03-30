@@ -5,23 +5,25 @@ on:
 
 jobs:
   build-echo:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04  # 切换到稳定的 22.04 环境
     steps:
     - name: 安装依赖（关键修复）
       run: |
-        sudo apt-get update -y
-        
-        # 启用 ARM64 多架构支持
+        # 替换为国内镜像源（示例使用清华源）
+        sudo sed -i 's@http://.*archive.ubuntu.com@https://mirrors.tuna.tsinghua.edu.cn@g' /etc/apt/sources.list
+        sudo sed -i 's@http://.*security.ubuntu.com@https://mirrors.tuna.tsinghua.edu.cn@g' /etc/apt/sources.list
+
+        # 添加 ARM64 架构支持
         sudo dpkg --add-architecture arm64
         sudo apt-get update -y
 
-        # 安装必要工具链
+        # 安装工具链
         sudo apt-get install -y \
           gcc-aarch64-linux-gnu \
           autoconf automake libtool \
           gettext \
           binutils-aarch64-linux-gnu \
-          crossbuild-essential-arm64  # 关键：提供交叉编译基础环境
+          crossbuild-essential-arm64
 
     - name: 下载并解压源码
       run: |
