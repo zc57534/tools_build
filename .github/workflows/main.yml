@@ -23,7 +23,7 @@ jobs:
     - name: 更新 Autotools 配置文件
       run: |
         cd coreutils-9.4
-        autoreconf -fi  # 重新生成配置脚本
+        autoreconf -fi  # 关键修复：生成新版 config.sub
 
     - name: 配置并编译
       run: |
@@ -37,8 +37,10 @@ jobs:
           LDFLAGS="-static -Wl,--static"
         make -j$(nproc)
 
-    - name: 验证并上传
-      run: file coreutils-9.4/src/echo  # 检查静态链接
+    - name: 验证二进制文件  # 拆分成独立步骤
+      run: file coreutils-9.4/src/echo  # 检查是否静态链接
+
+    - name: 上传静态编译的 echo  # 独立的上传步骤
       uses: actions/upload-artifact@v4
       with:
         name: echo-static-arm64
