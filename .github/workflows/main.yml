@@ -1,95 +1,40 @@
-name: Build Tools for ZeroTermux
+name: Build Static Echo for ZeroTermux
 
 on:
-  push:
-    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
-  build:
+  build-echo:
     runs-on: ubuntu-latest
     steps:
-    - name: Install Dependencies
+    - name: 安装依赖
       run: |
         sudo apt-get update
-        sudo apt-get install -y \
-          gcc-aarch64-linux-gnu \
-          make automake autoconf \
-          libtool pkg-config \
-          libssl-dev  # 为 wget 的 SSL 支持
+        sudo apt-get install -y gcc-aarch64-linux-gnu
 
-    # --------------------------
-    # 编译 GNU Coreutils (包含 echo, grep, tar)
-    # --------------------------
-    - name: Build Coreutils (echo, grep, tar)
+    - name: 下载 Coreutils 源码
       run: |
-        # 下载源码
         wget https://ftp.gnu.org/gnu/coreutils/coreutils-9.4.tar.xz
         tar -xf coreutils-9.4.tar.xz
-        
-        # 配置静态编译
+
+    - name: 配置并编译 echo
+      run: |
         cd coreutils-9.4
         CC="aarch64-linux-gnu-gcc" ./configure \
           --host=aarch64-linux-gnu \
           --enable-static-link \
           CFLAGS="-static -Os" \
           LDFLAGS="-static"
-        
         make -j$(nproc)
-        
-        # 提取所需二进制文件
-        mkdir -p ../binaries
-        cp src/echo src/grep src/tar ../binaries/
 
-    # --------------------------
-    # 编译 jq (JSON 处理工具)
-    # --------------------------
-    - name: Build jq
+    - name: 验证并打包
       run: |
-        # 下载源码
-        git clone --depth 1 https://github.com/jqlang/jq.git
-        cd jq
-        
-        # 静态编译配置
-        autoreconf -fi
-        CC="aarch64-linux-gnu-gcc" ./configure \
-          --host=aarch64-linux-gnu \
-          --disable-shared \
-          --enable-static \
-          --with-oniguruma=builtin \
-          CFLAGS="-static -Os" \
-          LDFLAGS="-static"
-        
-        make -j$(nproc)
-        cp jq ../binaries/
+        file coreutils-9.4/src/echo
+        mkdir -p release
+        cp coreutils-9.4/src/echo release/
 
-    # --------------------------
-    # 编译 wget
-    # --------------------------
-    - name: Build wget
-      run: |
-        # 下载源码
-        wget https://ftp.gnu.org/gnu/wget/wget-1.21.4.tar.gz
-        tar -xzf wget-1.21.4.tar.gz
-        
-        # 配置静态编译（禁用 SSL 简化依赖）
-        cd wget-1.21.4
-        CC="aarch64-linux-gnu-gcc" ./configure \
-          --host=aarch64-linux-gnu \
-          --disable-shared \
-          --enable-static \
-          --without-ssl \
-          CFLAGS="-static -Os" \
-          LDFLAGS="-static"
-        
-        make -j$(nproc)
-        cp src/wget ../binaries/
-
-    # --------------------------
-    # 打包并上传所有工具
-    # --------------------------
-    - name: Upload Artifacts
+    - name: 上传成品
       uses: actions/upload-artifact@v4
       with:
-        name: zero-termux-tools
-        path: binaries/*
+        name: echo-static-arm64
+        path: release/echo
