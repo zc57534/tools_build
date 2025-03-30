@@ -56,16 +56,17 @@ RUN set -ex && \
     tar xf ncurses-6.4.tar.gz && \
     cd ncurses-6.4 && \
     echo "Configuring ncurses with flags: $CONFIGURE_FLAGS" && \
-    ./configure --host=$HOST --prefix=$PREFIX --disable-shared --enable-static --without-tests && \
+    ./configure $CONFIGURE_FLAGS --disable-shared --enable-static && \
     make -j$(nproc) && \
-    make install
+    make install && \
+    find /root/usr/local/bin -name 'tic' -exec rm -f {} +
 
 # Build readline (dependency for bash)
 WORKDIR /root/build
 RUN curl -L -O https://ftp.gnu.org/gnu/readline/readline-8.2.tar.gz && \
     tar xf readline-8.2.tar.gz && \
     cd readline-8.2 && \
-    ./configure --host=$HOST --prefix=$PREFIX --disable-shared --enable-static && \
+    ./configure $CONFIGURE_FLAGS --disable-shared --enable-static && \
     make -j$(nproc) && \
     make install
 
@@ -74,7 +75,7 @@ WORKDIR /root/build
 RUN curl -L -O https://ftp.gnu.org/gnu/bash/bash-5.2.tar.gz && \
     tar xf bash-5.2.tar.gz && \
     cd bash-5.2 && \
-    ./configure --host=$HOST --prefix=$PREFIX --disable-shared --enable-static-link && \
+    ./configure $CONFIGURE_FLAGS --disable-shared --enable-static-link && \
     make -j$(nproc) && \
     $STRIP bash && \
     cp bash /root/bash
@@ -84,7 +85,7 @@ WORKDIR /root/build
 RUN curl -L -O https://ftp.gnu.org/gnu/grep/grep-3.11.tar.xz && \
     tar xf grep-3.11.tar.xz && \
     cd grep-3.11 && \
-    ./configure --host=$HOST --prefix=$PREFIX --disable-shared --enable-static CFLAGS="-static" && \
+    ./configure $CONFIGURE_FLAGS --disable-shared --enable-static CFLAGS="-static" && \
     make -j$(nproc) && \
     $STRIP src/grep && \
     cp src/grep /root/grep
@@ -94,7 +95,7 @@ WORKDIR /root/build
 RUN curl -L -O https://ftp.gnu.org/gnu/wget/wget-1.21.4.tar.gz && \
     tar xf wget-1.21.4.tar.gz && \
     cd wget-1.21.4 && \
-    ./configure --host=$HOST --prefix=$PREFIX --disable-shared --enable-static --without-ssl && \
+    ./configure $CONFIGURE_FLAGS --disable-shared --enable-static --without-ssl && \
     make -j$(nproc) && \
     $STRIP src/wget && \
     cp src/wget /root/wget
@@ -105,7 +106,7 @@ RUN git clone https://github.com/stedolan/jq.git && \
     cd jq && \
     git submodule update --init && \
     autoreconf -fi && \
-    ./configure --host=$HOST --prefix=$PREFIX --disable-shared --enable-static CFLAGS="-static" && \
+    ./configure $CONFIGURE_FLAGS --disable-shared --enable-static CFLAGS="-static" && \
     make -j$(nproc) && \
     $STRIP jq && \
     cp jq /root/jq
@@ -115,7 +116,7 @@ WORKDIR /root/build
 RUN curl -L -O https://ftp.gnu.org/gnu/tar/tar-1.35.tar.xz && \
     tar xf tar-1.35.tar.xz && \
     cd tar-1.35 && \
-    ./configure --host=$HOST --prefix=$PREFIX --disable-shared --enable-static && \
+    ./configure $CONFIGURE_FLAGS --disable-shared --enable-static && \
     make -j$(nproc) && \
     $STRIP src/tar && \
     cp src/tar /root/tar
