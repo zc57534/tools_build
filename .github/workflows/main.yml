@@ -1,58 +1,33 @@
 name: Build Static Echo for ZeroTermux
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
-  build-echo:
-    runs-on: ubuntu-22.04  # 切换到稳定的 22.04 环境
+  build:
+    runs-on: ubuntu-latest
     steps:
-    - name: 安装依赖（关键修复）
-      run: |
-        # 替换为国内镜像源（示例使用清华源）
-        sudo sed -i 's@http://.*archive.ubuntu.com@https://mirrors.tuna.tsinghua.edu.cn@g' /etc/apt/sources.list
-        sudo sed -i 's@http://.*security.ubuntu.com@https://mirrors.tuna.tsinghua.edu.cn@g' /etc/apt/sources.list
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-        # 添加 ARM64 架构支持
-        sudo dpkg --add-architecture arm64
-        sudo apt-get update -y
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential musl-tools
 
-        # 安装工具链
-        sudo apt-get install -y \
-          gcc-aarch64-linux-gnu \
-          autoconf automake libtool \
-          gettext \
-          binutils-aarch64-linux-gnu \
-          crossbuild-essential-arm64
+      - name: Download and Extract Coreutils Source
+        run: |
+          curl -LO http://ftp.gnu.org/gnu/coreutils/coreutils-9.4.tar.xz
+          tar xf coreutils-9.4.tar.xz
+          cd coreutils-9.4
+          ./configure --host=aarch64-linux-android --disable-nls --enable-static CFLAGS="-static -Os"
+          make echo -j$(nproc)
 
-    - name: 下载并解压源码
-      run: |
-        wget https://ftp.gnu.org/gnu/coreutils/coreutils-9.4.tar.xz
-        tar -xf coreutils-9.4.tar.xz
-
-    - name: 更新 Autotools 配置文件
-      run: |
-        cd coreutils-9.4
-        autoreconf -fi
-
-    - name: 配置并编译
-      run: |
-        cd coreutils-9.4
-        CC="aarch64-linux-gnu-gcc" ./configure \
-          --host=aarch64-linux-gnu \
-          --enable-static-link \
-          --disable-shared \
-          --disable-nls \
-          --disable-libstdbuf \
-          CFLAGS="-static -Os" \
-          LDFLAGS="-static -Wl,--static"
-        make -j$(nproc)
-
-    - name: 验证二进制文件
-      run: file coreutils-9.4/src/echo
-
-    - name: 上传静态编译的 echo
-      uses: actions/upload-artifact@v4
-      with:
-        name: echo-static-arm64
-        path: coreutils-9.4/src/echo
+      - name: Upload Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: echo-binary
+          path: coreutils-9.4/src/echo
