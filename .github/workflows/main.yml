@@ -1,4 +1,4 @@
-name: Build Static Bash for ZeroTermux
+name: Build Tools for ZeroTermux
 
 on:
   push:
@@ -12,33 +12,84 @@ jobs:
     - name: Install Dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y gcc-aarch64-linux-gnu make wget
+        sudo apt-get install -y \
+          gcc-aarch64-linux-gnu \
+          make automake autoconf \
+          libtool pkg-config \
+          libssl-dev  # 为 wget 的 SSL 支持
 
-    - name: Download Bash Source
-      run: wget https://ftp.gnu.org/gnu/bash/bash-5.3-beta.tar.gz
-
-    - name: Extract Source
-      run: tar -xzf bash-5.3-beta.tar.gz
-
-    - name: Configure and Build
+    # --------------------------
+    # 编译 GNU Coreutils (包含 echo, grep, tar)
+    # --------------------------
+    - name: Build Coreutils (echo, grep, tar)
       run: |
-        cd bash-5.3-beta
-        CC=aarch64-linux-gnu-gcc ./configure \
+        # 下载源码
+        wget https://ftp.gnu.org/gnu/coreutils/coreutils-9.4.tar.xz
+        tar -xf coreutils-9.4.tar.xz
+        
+        # 配置静态编译
+        cd coreutils-9.4
+        CC="aarch64-linux-gnu-gcc" ./configure \
           --host=aarch64-linux-gnu \
           --enable-static-link \
-          --without-bash-malloc \
-          --without-readline \
           CFLAGS="-static -Os" \
           LDFLAGS="-static"
+        
         make -j$(nproc)
+        
+        # 提取所需二进制文件
+        mkdir -p ../binaries
+        cp src/echo src/grep src/tar ../binaries/
 
-    - name: Check Binary
+    # --------------------------
+    # 编译 jq (JSON 处理工具)
+    # --------------------------
+    - name: Build jq
       run: |
-        file bash-5.3-beta/bash
-        # 预期输出：ELF 64-bit LSB executable... statically linked
+        # 下载源码
+        git clone --depth 1 https://github.com/jqlang/jq.git
+        cd jq
+        
+        # 静态编译配置
+        autoreconf -fi
+        CC="aarch64-linux-gnu-gcc" ./configure \
+          --host=aarch64-linux-gnu \
+          --disable-shared \
+          --enable-static \
+          --with-oniguruma=builtin \
+          CFLAGS="-static -Os" \
+          LDFLAGS="-static"
+        
+        make -j$(nproc)
+        cp jq ../binaries/
 
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v4
+    # --------------------------
+    # 编译 wget
+    # --------------------------
+    - name: Build wget
+      run: |
+        # 下载源码
+        wget https://ftp.gnu.org/gnu/wget/wget-1.21.4.tar.gz
+        tar -xzf wget-1.21.4.tar.gz
+        
+        # 配置静态编译（禁用 SSL 简化依赖）
+        cd wget-1.21.4
+        CC="aarch64-linux-gnu-gcc" ./configure \
+          --host=aarch64-linux-gnu \
+          --disable-shared \
+          --enable-static \
+          --without-ssl \
+          CFLAGS="-static -Os" \
+          LDFLAGS="-static"
+        
+        make -j$(nproc)
+        cp src/wget ../binaries/
+
+    # --------------------------
+    # 打包并上传所有工具
+    # --------------------------
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v3
       with:
-        name: bash-static-arm64
-        path: bash-5.3-beta/bash
+        name: zero-termux-tools
+        path: binaries/*
