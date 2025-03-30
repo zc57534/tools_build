@@ -23,11 +23,12 @@ jobs:
           curl -LO http://ftp.gnu.org/gnu/coreutils/coreutils-9.4.tar.xz
           tar xf coreutils-9.4.tar.xz
           cd coreutils-9.4
-          ./configure --host=aarch64-linux-android --disable-nls CFLAGS="-static -Os"
-          make echo -j$(nproc)
+          CC="musl-gcc" CFLAGS="-static -Os" ./configure --disable-nls
+          make -j$(nproc)
+          cp src/echo ../echo
 
       - name: Upload Binary
         uses: actions/upload-artifact@v4
         with:
           name: echo-binary
-          path: coreutils-9.4/src/echo
+          path: echo
