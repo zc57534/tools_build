@@ -1,129 +1,82 @@
-FROM ubuntu:22.04 as builder
-MAINTAINER Android Utils Builder
+# vim: ft=dockerfile:
+# Dockerfile to build static bash for Android (Termux)
+# 目标架构: aarch64 (arm64-v8a)
+# NDK版本: r28
+# API级别: 33
 
+# 第一阶段：构建环境
+FROM ubuntu:22.04 as builder
+
+# 设置工作目录
 WORKDIR /root
+
+# 安装基础编译工具
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-      build-essential \
-      unzip \
-      bzip2 \
+      ca-certificates \
+      curl \
       make \
-      binutils \
       autoconf \
       automake \
-      autotools-dev \
-      autopoint \
       libtool \
-      pkg-config \
-      git \
-      dpkg-dev \
-      curl \
-      ca-certificates \
-      texinfo \
-      python3 \
-      bison \
-      flex && \
+      binutils \
+      xz-utils \
+      gcc \
+      g++ \
+      unzip && \
     rm -rf /var/cache/apt/*
 
-# NDK setup
+# 配置 Android NDK
 ENV NDK_VERSION=r28
-ENV NDK=/root/android-ndk-$NDK_VERSION
-ENV TOOLCHAIN=$NDK/toolchains/llvm/prebuilt/linux-x86_64 \
-    HOST=aarch64-linux-android \
-    API=33
-ENV AR=$TOOLCHAIN/bin/llvm-ar \
-    CC=$TOOLCHAIN/bin/$HOST$API-clang \
-    CXX=$TOOLCHAIN/bin/$HOST$API-clang++ \
-    LD=$TOOLCHAIN/bin/ld \
-    RANLIB=$TOOLCHAIN/bin/llvm-ranlib \
-    STRIP=$TOOLCHAIN/bin/llvm-strip \
-    PREFIX=/root/usr/local
+ENV NDK_ROOT=/root/android-ndk-${NDK_VERSION}
+ENV TOOLCHAIN=${NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64
+ENV TARGET=aarch64-linux-android
+ENV API_LEVEL=33
 
-# Download NDK
-RUN curl -L -O https://dl.google.com/android/repository/android-ndk-$NDK_VERSION-linux.zip && \
-    unzip -q android-ndk-$NDK_VERSION-linux.zip && \
-    rm android-ndk-$NDK_VERSION-linux.zip
+# 下载并解压 NDK
+RUN curl -L -o ndk.zip https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux.zip && \
+    unzip -q ndk.zip && \
+    rm ndk.zip
 
-# Set build type using dpkg-architecture
-RUN BUILD_TYPE=$(dpkg-architecture -qDEB_BUILD_GNU_TYPE) && \
-    echo "Build type is: $BUILD_TYPE" && \
-    export CONFIGURE_FLAGS="--host=$HOST --build=$BUILD_TYPE --prefix=$PREFIX"
+# 设置编译环境变量
+ENV CC=${TOOLCHAIN}/bin/${TARGET}${API_LEVEL}-clang \
+    CXX=${TOOLCHAIN}/bin/${TARGET}${API_LEVEL}-clang++ \
+    AR=${TOOLCHAIN}/bin/llvm-ar \
+    STRIP=${TOOLCHAIN}/bin/llvm-strip \
+    CFLAGS="-static -Os" \
+    LDFLAGS="-static"
 
-# Build ncurses (dependency for bash)
-WORKDIR /root/build
-RUN set -ex && \
-    curl -L -O https://invisible-mirror.net/archives/ncurses/ncurses-6.4.tar.gz && \
-    tar xf ncurses-6.4.tar.gz && \
-    cd ncurses-6.4 && \
-    echo "Configuring ncurses with flags: $CONFIGURE_FLAGS" && \
-    ./configure $CONFIGURE_FLAGS --disable-shared --enable-static --without-cxx-binding --without-cxx --without-ada CFLAGS="-fPIC" --with-build-cc=/usr/bin/gcc && \
-    make -j$(nproc) && \
-    make install && \
-    find /root/usr/local/bin -name 'tic' -exec rm -f {} +
+# 下载 Bash 源码 (版本 5.2.21)
+ENV BASH_VERSION=5.2.21
+RUN curl -LO https://ftp.gnu.org/gnu/bash/bash-${BASH_VERSION}.tar.gz && \
+    tar xzf bash-${BASH_VERSION}.tar.gz && \
+    rm bash-${BASH_VERSION}.tar.gz
 
-# Build readline (dependency for bash)
-WORKDIR /root/build
-RUN curl -L -O https://ftp.gnu.org/gnu/readline/readline-8.2.tar.gz && \
-    tar xf readline-8.2.tar.gz && \
-    cd readline-8.2 && \
-    ./configure $CONFIGURE_FLAGS --disable-shared --enable-static && \
+# 编译 Bash
+WORKDIR /root/bash-${BASH_VERSION}
+RUN ./configure \
+    --host=${TARGET} \
+    --prefix=/output \
+    --enable-static-link \
+    --without-bash-malloc \
+    --disable-nls \
+    --enable-minimal-config && \
     make -j$(nproc) && \
     make install
 
-# Build bash
-WORKDIR /root/build
-RUN curl -L -O https://ftp.gnu.org/gnu/bash/bash-5.2.tar.gz && \
-    tar xf bash-5.2.tar.gz && \
-    cd bash-5.2 && \
-    ./configure $CONFIGURE_FLAGS --disable-shared --enable-static-link && \
-    make -j$(nproc) && \
-    $STRIP bash && \
-    cp bash /root/bash
-
-# Build grep
-WORKDIR /root/build
-RUN curl -L -O https://ftp.gnu.org/gnu/grep/grep-3.11.tar.xz && \
-    tar xf grep-3.11.tar.xz && \
-    cd grep-3.11 && \
-    ./configure $CONFIGURE_FLAGS --disable-shared --enable-static CFLAGS="-static" && \
-    make -j$(nproc) && \
-    $STRIP src/grep && \
-    cp src/grep /root/grep
-
-# Build wget
-WORKDIR /root/build
-RUN curl -L -O https://ftp.gnu.org/gnu/wget/wget-1.21.4.tar.gz && \
-    tar xf wget-1.21.4.tar.gz && \
-    cd wget-1.21.4 && \
-    ./configure $CONFIGURE_FLAGS --disable-shared --enable-static --without-ssl && \
-    make -j$(nproc) && \
-    $STRIP src/wget && \
-    cp src/wget /root/wget
-
-# Build jq
-WORKDIR /root/build
-RUN git clone https://github.com/stedolan/jq.git && \
-    cd jq && \
-    git submodule update --init && \
-    autoreconf -fi && \
-    ./configure $CONFIGURE_FLAGS --disable-shared --enable-static CFLAGS="-static" && \
-    make -j$(nproc) && \
-    $STRIP jq && \
-    cp jq /root/jq
-
-# Build tar
-WORKDIR /root/build
-RUN curl -L -O https://ftp.gnu.org/gnu/tar/tar-1.35.tar.xz && \
-    tar xf tar-1.35.tar.xz && \
-    cd tar-1.35 && \
-    ./configure $CONFIGURE_FLAGS --disable-shared --enable-static && \
-    make -j$(nproc) && \
-    $STRIP src/tar && \
-    cp src/tar /root/tar
-
+# 第二阶段：生成最终镜像
 FROM ubuntu:22.04
-COPY --from=builder /root/bash /app/bash
-COPY --from=builder /root/grep /app/grep
-COPY --from=builder /root/wget /app/wget
-COPY --from=builder /root/jq /app/jq
-COPY --from=builder /root/tar /app/tar
+
+# 复制编译产物
+COPY --from=builder /output/bin/bash /app/bash-static
+
+# 验证步骤
+RUN file /app/bash-static && \
+    ldd /app/bash-static 2>&1 | grep -q "not a dynamic executable" && \
+    echo -e "\n\033[32mBuild success!\033[0m" || (echo -e "\n\033[31mBuild failed!\033[0m" && exit 1)
+
+# 设置默认输出路径
+VOLUME /out
+
+# 运行时自动复制二进制文件到挂载点
+CMD cp /app/bash-static /out && echo "Binary saved to /out directory"
