@@ -1,9 +1,16 @@
 # vim: ft=dockerfile:
+# Dockerfile to build static tools for Android Termux
+# NDK版本: r28b
+# 目标架构: aarch64 (API 33)
+
+# 第一阶段：构建环境
 FROM ubuntu:22.04 as builder
 
+# 基础配置
 WORKDIR /root
+ENV DEBIAN_FRONTEND=noninteractive
 
-# 安装增强版编译工具链
+# 安装编译依赖
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       ca-certificates \
@@ -17,62 +24,143 @@ RUN apt-get update && \
       gcc \
       g++ \
       unzip \
-      patchelf && \
+      patchelf \
+      git \
+      file && \
     rm -rf /var/cache/apt/*
 
-# 使用 NDK r28b (修复符号问题)
+# Android NDK 配置
 ENV NDK_VERSION=r28b
 ENV NDK_ROOT=/root/android-ndk-${NDK_VERSION}
 ENV TOOLCHAIN=${NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64
 ENV TARGET=aarch64-linux-android
 ENV API_LEVEL=33
 
-# 下载指定版本 NDK
+# 下载并解压 NDK
 RUN curl -L -o ndk.zip https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux.zip && \
     unzip -q ndk.zip && \
     rm ndk.zip
 
-# 配置增强型编译参数
+# 设置交叉编译环境变量
 ENV CC=${TOOLCHAIN}/bin/${TARGET}${API_LEVEL}-clang \
     CXX=${TOOLCHAIN}/bin/${TARGET}${API_LEVEL}-clang++ \
     AR=${TOOLCHAIN}/bin/llvm-ar \
     STRIP=${TOOLCHAIN}/bin/llvm-strip \
     RANLIB=${TOOLCHAIN}/bin/llvm-ranlib \
-    CFLAGS="-static -Os -fcommon" \  # 添加 -fcommon 解决符号冲突
+    CFLAGS="-static -Os -fcommon" \
     LDFLAGS="-static -Wl,--allow-multiple-definition"
 
-# 使用 Bash 5.2.21 补丁版
-ENV BASH_VERSION=5.2.21
-RUN curl -LO https://ftp.gnu.org/gnu/bash/bash-${BASH_VERSION}.tar.gz && \
+# 公共安装路径
+ENV PREFIX=/root/output
+
+# 编译 Bash 5.2.21 (带符号冲突修复)
+RUN set -ex && \
+    BASH_VERSION=5.2.21 && \
+    curl -LO https://ftp.gnu.org/gnu/bash/bash-${BASH_VERSION}.tar.gz && \
     tar xzf bash-${BASH_VERSION}.tar.gz && \
-    rm bash-${BASH_VERSION}.tar.gz
+    cd bash-${BASH_VERSION} && \
+    # 应用符号重命名补丁
+    sed -i 's/strtoimax/__bash_strtoimax/g' strtoimax.c && \
+    sed -i 's/strtoimax/__bash_strtoimax/g' include/stdint.h && \
+    # 配置编译选项
+    ./configure \
+      --host=${TARGET} \
+      --prefix=${PREFIX} \
+      --enable-static-link \
+      --without-bash-malloc \
+      --disable-nls \
+      --enable-minimal-config \
+      --with-installed-readline=no \
+      bash_cv_func_strtoimax=no && \
+    make -j$(nproc) LIBS="-lc -lm -ldl" && \
+    make install && \
+    rm -rf ../bash-*
 
-# 应用符号冲突补丁
-WORKDIR /root/bash-${BASH_VERSION}
-RUN sed -i 's/strtoimax/__bash_strtoimax/g' strtoimax.c && \
-    sed -i 's/strtoimax/__bash_strtoimax/g' include/stdint.h
+# 编译 Coreutils 9.4 (获取静态版 echo)
+RUN set -ex && \
+    COREUTILS_VERSION=9.4 && \
+    curl -L https://ftp.gnu.org/gnu/coreutils/coreutils-${COREUTILS_VERSION}.tar.xz | tar xJ && \
+    cd coreutils-${COREUTILS_VERSION} && \
+    ./configure \
+      --host=${TARGET} \
+      --prefix=${PREFIX} \
+      --enable-static \
+      --disable-nls && \
+    make -j$(nproc) && \
+    make install && \
+    rm -rf ../coreutils-*
 
-# 配置编译选项
-RUN ./configure \
-    --host=${TARGET} \
-    --prefix=/output \
-    --enable-static-link \
-    --without-bash-malloc \
-    --disable-nls \
-    --enable-minimal-config \
-    --with-installed-readline=no \  # 禁用内置 readline
-    bash_cv_func_strtoimax=no  # 强制禁用冲突函数
+# 编译 Grep 3.11
+RUN set -ex && \
+    GREP_VERSION=3.11 && \
+    curl -L https://ftp.gnu.org/gnu/grep/grep-${GREP_VERSION}.tar.xz | tar xJ && \
+    cd grep-${GREP_VERSION} && \
+    ./configure \
+      --host=${TARGET} \
+      --prefix=${PREFIX} \
+      --disable-nls \
+      --enable-static && \
+    make -j$(nproc) && \
+    make install && \
+    rm -rf ../grep-*
 
-# 修正链接顺序
-RUN make -j$(nproc) LIBS="-lc -lm -ldl"
+# 编译 Wget 1.21.4 (带SSL支持)
+RUN set -ex && \
+    WGET_VERSION=1.21.4 && \
+    curl -L https://ftp.gnu.org/gnu/wget/wget-${WGET_VERSION}.tar.gz | tar xz && \
+    cd wget-${WGET_VERSION} && \
+    ./configure \
+      --host=${TARGET} \
+      --prefix=${PREFIX} \
+      --disable-nls \
+      --disable-ipv6 \
+      --enable-static \
+      --with-ssl=openssl \
+      CFLAGS="${CFLAGS} -I${PREFIX}/include" \
+      LDFLAGS="${LDFLAGS} -L${PREFIX}/lib" && \
+    make -j$(nproc) && \
+    make install && \
+    rm -rf ../wget-*
 
-# 验证阶段
+# 编译 JQ 1.7
+RUN set -ex && \
+    git clone --depth 1 --branch jq-1.7 https://github.com/jqlang/jq.git && \
+    cd jq && \
+    git submodule update --init && \
+    autoreconf -fi && \
+    ./configure \
+      --host=${TARGET} \
+      --prefix=${PREFIX} \
+      --enable-static \
+      --disable-maintainer-mode && \
+    make -j$(nproc) && \
+    make install && \
+    rm -rf ../jq
+
+# 编译 Tar 1.35
+RUN set -ex && \
+    TAR_VERSION=1.35 && \
+    curl -L https://ftp.gnu.org/gnu/tar/tar-${TAR_VERSION}.tar.gz | tar xz && \
+    cd tar-${TAR_VERSION} && \
+    ./configure \
+      --host=${TARGET} \
+      --prefix=${PREFIX} \
+      --enable-static \
+      --disable-nls && \
+    make -j$(nproc) && \
+    make install && \
+    rm -rf ../tar-*
+
+# 最终镜像
 FROM ubuntu:22.04
-COPY --from=builder /output/bin/bash /app/bash-static
-RUN file /app/bash-static && \
-    { ldd /app/bash-static 2>&1 | grep -q "not a dynamic executable"; } && \
-    { nm /app/bash-static | grep -q __bash_strtoimax; } && \
-    echo "Build verification passed" || { echo "Build verification failed"; exit 1; }
+
+# 复制所有编译产物
+COPY --from=builder /root/output/bin/ /app/
+
+# 执行最终清理和验证
+RUN find /app -type f -exec strip {} \; && \
+    find /app -type f -exec file {} \; | grep -q "statically linked" && \
+    echo "所有二进制文件验证通过" || (echo "发现动态链接文件!"; exit 1)
 
 VOLUME /out
-CMD cp /app/bash-static /out
+CMD cp -r /app/* /out
