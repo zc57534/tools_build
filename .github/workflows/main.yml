@@ -23,7 +23,7 @@ jobs:
           curl -LO http://ftp.gnu.org/gnu/coreutils/coreutils-9.4.tar.xz
           tar xf coreutils-9.4.tar.xz
           cd coreutils-9.4
-          ./configure --host=aarch64-linux-android --disable-nls --enable-static CFLAGS="-static -Os"
+          ./configure --host=aarch64-linux-android --disable-nls CFLAGS="-static -Os"
           make echo -j$(nproc)
 
       - name: Upload Binary
