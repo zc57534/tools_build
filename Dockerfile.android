@@ -1,16 +1,9 @@
 # vim: ft=dockerfile:
-# Dockerfile to build static bash for Android (Termux)
-# 目标架构: aarch64 (arm64-v8a)
-# NDK版本: r28
-# API级别: 33
-
-# 第一阶段：构建环境
 FROM ubuntu:22.04 as builder
 
-# 设置工作目录
 WORKDIR /root
 
-# 安装基础编译工具
+# 安装增强版编译工具链
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       ca-certificates \
@@ -23,60 +16,63 @@ RUN apt-get update && \
       xz-utils \
       gcc \
       g++ \
-      unzip && \
+      unzip \
+      patchelf && \
     rm -rf /var/cache/apt/*
 
-# 配置 Android NDK
-ENV NDK_VERSION=r28
+# 使用 NDK r28b (修复符号问题)
+ENV NDK_VERSION=r28b
 ENV NDK_ROOT=/root/android-ndk-${NDK_VERSION}
 ENV TOOLCHAIN=${NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64
 ENV TARGET=aarch64-linux-android
 ENV API_LEVEL=33
 
-# 下载并解压 NDK
+# 下载指定版本 NDK
 RUN curl -L -o ndk.zip https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux.zip && \
     unzip -q ndk.zip && \
     rm ndk.zip
 
-# 设置编译环境变量
+# 配置增强型编译参数
 ENV CC=${TOOLCHAIN}/bin/${TARGET}${API_LEVEL}-clang \
     CXX=${TOOLCHAIN}/bin/${TARGET}${API_LEVEL}-clang++ \
     AR=${TOOLCHAIN}/bin/llvm-ar \
     STRIP=${TOOLCHAIN}/bin/llvm-strip \
-    CFLAGS="-static -Os" \
-    LDFLAGS="-static"
+    RANLIB=${TOOLCHAIN}/bin/llvm-ranlib \
+    CFLAGS="-static -Os -fcommon" \  # 添加 -fcommon 解决符号冲突
+    LDFLAGS="-static -Wl,--allow-multiple-definition"
 
-# 下载 Bash 源码 (版本 5.2.21)
+# 使用 Bash 5.2.21 补丁版
 ENV BASH_VERSION=5.2.21
 RUN curl -LO https://ftp.gnu.org/gnu/bash/bash-${BASH_VERSION}.tar.gz && \
     tar xzf bash-${BASH_VERSION}.tar.gz && \
     rm bash-${BASH_VERSION}.tar.gz
 
-# 编译 Bash
+# 应用符号冲突补丁
 WORKDIR /root/bash-${BASH_VERSION}
+RUN sed -i 's/strtoimax/__bash_strtoimax/g' strtoimax.c && \
+    sed -i 's/strtoimax/__bash_strtoimax/g' include/stdint.h
+
+# 配置编译选项
 RUN ./configure \
     --host=${TARGET} \
     --prefix=/output \
     --enable-static-link \
     --without-bash-malloc \
     --disable-nls \
-    --enable-minimal-config && \
-    make -j$(nproc) && \
-    make install
+    --enable-minimal-config \
+    --with-installed-readline=no \  # 禁用内置 readline
+    bash_cv_func_strtoimax=no  # 强制禁用冲突函数
 
-# 第二阶段：生成最终镜像
+# 修正链接顺序
+RUN make -j$(nproc) LIBS="-lc -lm -ldl"
+
+# 验证阶段
 FROM ubuntu:22.04
-
-# 复制编译产物
 COPY --from=builder /output/bin/bash /app/bash-static
-
-# 验证步骤
 RUN file /app/bash-static && \
-    ldd /app/bash-static 2>&1 | grep -q "not a dynamic executable" && \
-    echo -e "\n\033[32mBuild success!\033[0m" || (echo -e "\n\033[31mBuild failed!\033[0m" && exit 1)
+    { ldd /app/bash-static 2>&1 | grep -q "not a dynamic executable"; } && \
+    { nm /app/bash-static | grep -q __bash_strtoimax; } && \
+    echo "Build verification passed" || { echo "Build verification failed"; exit 1; }
 
-# 设置默认输出路径
 VOLUME /out
-
-# 运行时自动复制二进制文件到挂载点
-CMD cp /app/bash-static /out && echo "Binary saved to /out directory"
+CMD cp /app/bash-static /out
