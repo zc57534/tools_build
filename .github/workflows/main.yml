@@ -23,9 +23,14 @@ jobs:
           curl -LO http://ftp.gnu.org/gnu/coreutils/coreutils-9.4.tar.xz
           tar xf coreutils-9.4.tar.xz
           cd coreutils-9.4
-          CC="musl-gcc" CFLAGS="-static -Os" ./configure --disable-nls
-          make -j$(nproc)
+          CC="musl-gcc" CFLAGS="-static -Os" ./configure --disable-nls --disable-shared
+          make src/echo -j$(nproc)
           cp src/echo ../echo
+
+      - name: Verify Binary
+        run: |
+          file echo
+          ldd echo || true
 
       - name: Upload Binary
         uses: actions/upload-artifact@v4
