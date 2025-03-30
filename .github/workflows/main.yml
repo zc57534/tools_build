@@ -7,12 +7,13 @@ jobs:
   build-echo:
     runs-on: ubuntu-latest
     steps:
-    - name: 安装依赖
+    - name: 安装依赖（关键修复）
       run: |
         sudo apt-get update
         sudo apt-get install -y \
           gcc-aarch64-linux-gnu \
           autoconf automake libtool \
+          gettext \                # 修复 autopoint 缺失问题
           binutils-aarch64-linux-gnu
 
     - name: 下载并解压源码
@@ -23,7 +24,7 @@ jobs:
     - name: 更新 Autotools 配置文件
       run: |
         cd coreutils-9.4
-        autoreconf -fi  # 关键修复：生成新版 config.sub
+        autoreconf -fi  # 现在可正常执行
 
     - name: 配置并编译
       run: |
@@ -32,15 +33,16 @@ jobs:
           --host=aarch64-linux-gnu \
           --enable-static-link \
           --disable-shared \
+          --disable-nls \          # 可选：禁用国际化（减少依赖）
           --disable-libstdbuf \
           CFLAGS="-static -Os" \
           LDFLAGS="-static -Wl,--static"
         make -j$(nproc)
 
-    - name: 验证二进制文件  # 拆分成独立步骤
-      run: file coreutils-9.4/src/echo  # 检查是否静态链接
+    - name: 验证二进制文件
+      run: file coreutils-9.4/src/echo
 
-    - name: 上传静态编译的 echo  # 独立的上传步骤
+    - name: 上传静态编译的 echo
       uses: actions/upload-artifact@v4
       with:
         name: echo-static-arm64
