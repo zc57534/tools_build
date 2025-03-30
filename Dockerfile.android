@@ -56,7 +56,7 @@ RUN set -ex && \
     tar xf ncurses-6.4.tar.gz && \
     cd ncurses-6.4 && \
     echo "Configuring ncurses with flags: $CONFIGURE_FLAGS" && \
-    ./configure $CONFIGURE_FLAGS --disable-shared --enable-static && \
+    ./configure $CONFIGURE_FLAGS --disable-shared --enable-static --without-cxx-binding --without-cxx --without-ada CFLAGS="-fPIC" && \
     make -j$(nproc) && \
     make install && \
     find /root/usr/local/bin -name 'tic' -exec rm -f {} +
