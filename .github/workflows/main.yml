@@ -2,34 +2,34 @@ name: Build Static Grep for Termux
 
 on:
   push:
-    branches: [ "main" ]
-  workflow_dispatch:
+    branches: [ "grep" ]  # 当推送到 'grep' 分支时触发
+  workflow_dispatch:  # 手动触发工作流
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest  # 使用最新的 Ubuntu 镜像
     steps:
-    - name: Install Dependencies
+    - name: Install Dependencies  # 安装依赖项
       run: |
         sudo apt-get update
         sudo apt-get install -y wget unzip make tar
 
-    - name: Download Android NDK r28
-      run: wget https://dl.google.com/android/repository/android-ndk-r28-linux.zip
+    - name: Download Android NDK r28  # 下载 Android NDK r28
+      run: wget https://dl.google.com/android/repository/android-ndk-r28b-linux-x86_64.zip
 
-    - name: Extract Android NDK
-      run: unzip -q android-ndk-r28-linux.zip -d $HOME/android-ndk
+    - name: Extract Android NDK  # 解压 Android NDK
+      run: unzip -q android-ndk-r28b-linux-x86_64.zip -d $HOME/android-ndk
 
-    - name: Set NDK Environment Variable
-      run: echo "ANDROID_NDK_HOME=$HOME/android-ndk/android-ndk-r28" >> $GITHUB_ENV
+    - name: Set NDK Environment Variable  # 设置 NDK 环境变量
+      run: echo "ANDROID_NDK_HOME=$HOME/android-ndk/android-ndk-r28b" >> $GITHUB_ENV
 
-    - name: Download GNU Grep Source
+    - name: Download GNU Grep Source  # 下载 GNU Grep 源码
       run: wget https://ftp.gnu.org/gnu/grep/grep-3.8.tar.xz
 
-    - name: Extract GNU Grep Source
+    - name: Extract GNU Grep Source  # 解压 GNU Grep 源码
       run: tar -xf grep-3.8.tar.xz
 
-    - name: Configure and Build Grep
+    - name: Configure and Build Grep  # 配置并编译 Grep
       run: |
         cd grep-3.8
         # 设置交叉编译器为 NDK 中的 clang
@@ -41,13 +41,13 @@ jobs:
         ./configure --host=aarch64-linux-android --disable-nls
         make -j$(nproc)
 
-    - name: Check Binary
+    - name: Check Binary  # 检查生成的二进制文件
       run: |
         # 检查生成的 grep 可执行文件是否为静态链接的 ELF 文件
         file grep-3.8/src/grep
         # 预期输出类似：ELF 64-bit LSB executable, statically linked,...
 
-    - name: Upload Artifact
+    - name: Upload Artifact  # 上传生成的二进制文件作为构建产物
       uses: actions/upload-artifact@v4
       with:
         name: grep-static-arm64
