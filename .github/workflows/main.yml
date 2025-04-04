@@ -35,6 +35,8 @@ jobs:
       run: |
         GREP_VERSION=3.8
         cd grep-${GREP_VERSION}
+        sed -i 's/_p/__p/g' lib/fpending.c
+        sed -i 's/_bf/__bf/g' lib/fpending.c
         ./configure \
           CC="aarch64-linux-android21-clang" \
           --host=aarch64-linux-android \
