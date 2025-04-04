@@ -23,20 +23,30 @@ jobs:
     - name: Set NDK Environment Variable
       run: echo "ANDROID_NDK_HOME=$HOME/android-ndk/android-ndk-r28" >> $GITHUB_ENV
 
-    - name: Build echo
+    - name: Download Coreutils
       run: |
-        $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/clang \
-          --target=aarch64-linux-android21 \
-          --sysroot=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot \
-          -static -O2 -o echo src/echo.c
+        COREUTILS_VERSION=9.4
+        wget https://ftp.gnu.org/gnu/coreutils/coreutils-${COREUTILS_VERSION}.tar.xz
+        tar xJf coreutils-${COREUTILS_VERSION}.tar.xz
+
+    - name: Build Coreutils (including echo)
+      run: |
+        cd coreutils-${COREUTILS_VERSION}
+        ./configure \
+          --host=aarch64-linux-android \
+          --prefix=$HOME/output \
+          --enable-static \
+          --disable-nls
+        make -j$(nproc)
+        make install
 
     - name: Check Binary
       run: |
-        file echo
+        file $HOME/output/bin/echo
         # 预期输出：ELF 64-bit LSB executable... statically linked
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
         name: echo-static-arm64
-        path: echo
+        path: $HOME/output/bin/echo
