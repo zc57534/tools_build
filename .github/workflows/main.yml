@@ -48,11 +48,9 @@ jobs:
         # 预期输出：ELF 64-bit LSB executable... statically linked
         # ldd should fail for static binaries
 
-    - name: Copy Binary
-      run: cp $HOME/output/bin/echo $HOME/output/bin/echo-static
-
+ 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
         name: echo-static-arm64
-        path: $HOME/output/bin/echo-static
+        path: $HOME/output/bin/echo
