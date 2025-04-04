@@ -17,7 +17,7 @@ jobs:
     - name: Download Android NDK r28
       run: wget https://dl.google.com/android/repository/android-ndk-r28-linux.zip
     - name: Extract Android NDK
-      run: unzip -q android-ndk-r28b-linux-x86_64.zip -d $HOME/android-ndk
+      run: unzip -q android-ndk-r28b-linux.zip -d $HOME/android-ndk
 
     - name: Set NDK Environment Variable
       run: echo "ANDROID_NDK_HOME=$HOME/android-ndk/android-ndk-r28b" >> $GITHUB_ENV
