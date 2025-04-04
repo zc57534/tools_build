@@ -2,8 +2,7 @@ name: echo
 
 on:
   push:
-    tags:
-      - '*'  # 可根据需要调整触发条件
+    branches: [ "bash" ]
   workflow_dispatch:
 
 jobs:
