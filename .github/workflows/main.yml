@@ -14,15 +14,15 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y wget unzip make gcc musl-tools
 
-    - name: Download Android NDK r25
-      run: wget https://dl.google.com/android/repository/android-ndk-r25-linux.zip
+    - name: Download Android NDK r28
+      run: wget https://dl.google.com/android/repository/android-ndk-r28-linux.zip
 
     - name: Extract Android NDK
-      run: unzip -q android-ndk-r25-linux.zip -d $HOME/android-ndk
+      run: unzip -q android-ndk-r28-linux.zip -d $HOME/android-ndk
 
     - name: Set NDK Environment Variable
       run: |
-        echo "ANDROID_NDK_HOME=$HOME/android-ndk/android-ndk-r25" >> $GITHUB_ENV
+        echo "ANDROID_NDK_HOME=$HOME/android-ndk/android-ndk-r28" >> $GITHUB_ENV
         echo "PATH=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH" >> $GITHUB_ENV
 
     - name: Download Coreutils
@@ -35,7 +35,22 @@ jobs:
       run: |
         COREUTILS_VERSION=9.4
         cd coreutils-${COREUTILS_VERSION}
-        ./configure \
+        cat <<EOF > missing_functions.h
+        #ifndef MISSING_FUNCTIONS_H
+        #define MISSING_FUNCTIONS_H
+        #include <time.h>
+        #include <stdlib.h>
+        typedef struct timezone *timezone_t;
+        timezone_t tzalloc(const char *name) {
+          return NULL;
+        }
+        void tzfree(timezone_t tz) {}
+        time_t mktime_z(timezone_t tz, struct tm *tm) {
+          return mktime(tm);
+        }
+        #endif
+        EOF
+        CFLAGS="-include $(pwd)/missing_functions.h" ./configure \
           CC="aarch64-linux-android21-clang" \
           --host=aarch64-linux-android \
           --prefix=$HOME/output \
