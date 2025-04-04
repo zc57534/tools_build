@@ -1,39 +1,44 @@
-name: Build Static Echo for ZeroTermux
+name: echo
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - '*'  # 可根据需要调整触发条件
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout repository (tag v4 for echo code if needed)
+        uses: actions/checkout@v2
+        # 如果仓库代码需要切换到某个特定版本，请在此处设置 ref
+        with:
+          # 例如：ref: v4
+          ref: master
 
-      - name: Install dependencies
+      - name: Setup Android NDK r28
         run: |
-          sudo apt update
-          sudo apt install -y build-essential musl-tools
+          wget https://dl.google.com/android/repository/android-ndk-r28b-linux-x86_64.zip
+          unzip -q android-ndk-r28b-linux-x86_64.zip -d $HOME/android-ndk
+          export ANDROID_NDK_HOME=$HOME/android-ndk/android-ndk-r28b
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> $GITHUB_ENV
 
-      - name: Download and Extract Coreutils Source
+      - name: Build dependencies
         run: |
-          curl -LO http://ftp.gnu.org/gnu/coreutils/coreutils-9.4.tar.xz
-          tar xf coreutils-9.4.tar.xz
-          cd coreutils-9.4
-          CC="musl-gcc" CFLAGS="-static -Os" ./configure --disable-nls --disable-shared
-          make src/echo -j$(nproc)
-          cp src/echo ../echo
+          # 如果有其他依赖需要编译，请在此处添加编译步骤
+          echo "No additional dependencies required"
 
-      - name: Verify Binary
+      - name: Build echo
         run: |
-          file echo
-          ldd echo || true
+          $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/clang \
+            --target=aarch64-linux-android21 \
+            --sysroot=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot \
+            -static -O2 -o echo src/echo.c
 
-      - name: Upload Binary
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: echo-binary
+          name: echo
           path: echo
