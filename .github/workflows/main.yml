@@ -34,12 +34,12 @@ jobs:
         COREUTILS_VERSION=9.4
         cd coreutils-${COREUTILS_VERSION}
         ./configure \
-          CC="gcc -static" \
+          CC="aarch64-linux-android-gcc -static" \
           --host=aarch64-linux-android \
           --prefix=$HOME/output \
           --enable-static \
           --disable-nls
-        make -j$(nproc) CC="gcc -static"
+        make -j$(nproc) CC="aarch64-linux-android-gcc -static"
         make install
 
     - name: Check Binary
@@ -53,4 +53,4 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: echo-static-arm64
-        path: /home/runner/output/bin/echo
+        path: $HOME/output/bin/echo
