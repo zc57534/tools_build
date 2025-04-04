@@ -31,6 +31,7 @@ jobs:
 
     - name: Build Coreutils (including echo)
       run: |
+        COREUTILS_VERSION=9.4
         cd coreutils-${COREUTILS_VERSION}
         ./configure \
           --host=aarch64-linux-android \
