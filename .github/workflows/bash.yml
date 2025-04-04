@@ -2,7 +2,7 @@ name: Build Static Bash for ZeroTermux
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "bash" ]
   workflow_dispatch:
 
 jobs:
