@@ -44,10 +44,12 @@ jobs:
     - name: Check Binary
       run: |
         file $HOME/output/bin/echo
+        ldd $HOME/output/bin/echo || echo "Static binary confirmed"
         # 预期输出：ELF 64-bit LSB executable... statically linked
+        # ldd should fail for static binaries
 
     - name: Upload Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v2
       with:
         name: echo-static-arm64
         path: $HOME/output/bin/echo
