@@ -45,6 +45,7 @@ jobs:
       run: |
         file $HOME/output/bin/echo
         ldd $HOME/output/bin/echo || echo "Static binary confirmed"
+        cp $HOME/output/bin/echo $HOME/output/bin/echo
         # 预期输出：ELF 64-bit LSB executable... statically linked
         # ldd should fail for static binaries
 
