@@ -20,7 +20,7 @@ jobs:
       run: unzip -q android-ndk-r28-linux.zip -d $HOME/android-ndk
 
     - name: Set NDK Environment Variable
-      run: echo "ANDROID_NDK_HOME=$HOME/android-ndk/android-ndk-r28b" >> $GITHUB_ENV
+      run: echo "ANDROID_NDK_HOME=$HOME/android-ndk/android-ndk-r28" >> $GITHUB_ENV
 
     - name: Build echo
       run: |
