@@ -1,43 +1,42 @@
-name: echo
+name: Build Static Echo for Termux
 
 on:
   push:
-    branches: [ "bash" ]
+    branches: [ "echo" ]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository (tag v4 for echo code if needed)
-        uses: actions/checkout@v4
-        # 如果仓库代码需要切换到某个特定版本，请在此处设置 ref
-        with:
-          # 例如：ref: v4
-          ref: master
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y wget unzip make
 
-      - name: Setup Android NDK r28
-        run: |
-          wget https://dl.google.com/android/repository/android-ndk-r28b-linux-x86_64.zip
-          unzip -q android-ndk-r28b-linux-x86_64.zip -d $HOME/android-ndk
-          export ANDROID_NDK_HOME=$HOME/android-ndk/android-ndk-r28b
-          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> $GITHUB_ENV
+    - name: Download Android NDK r28
+      run: wget https://dl.google.com/android/repository/android-ndk-r28b-linux-x86_64.zip
 
-      - name: Build dependencies
-        run: |
-          # 如果有其他依赖需要编译，请在此处添加编译步骤
-          echo "No additional dependencies required"
+    - name: Extract Android NDK
+      run: unzip -q android-ndk-r28b-linux-x86_64.zip -d $HOME/android-ndk
 
-      - name: Build echo
-        run: |
-          $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/clang \
-            --target=aarch64-linux-android21 \
-            --sysroot=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot \
-            -static -O2 -o echo src/echo.c
+    - name: Set NDK Environment Variable
+      run: echo "ANDROID_NDK_HOME=$HOME/android-ndk/android-ndk-r28b" >> $GITHUB_ENV
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: echo
-          path: echo
+    - name: Build echo
+      run: |
+        $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/clang \
+          --target=aarch64-linux-android21 \
+          --sysroot=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot \
+          -static -O2 -o echo src/echo.c
+
+    - name: Check Binary
+      run: |
+        file echo
+        # 预期输出：ELF 64-bit LSB executable... statically linked
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: echo-static-arm64
+        path: echo
