@@ -11,7 +11,7 @@ jobs:
 
     steps:
       - name: Checkout repository (tag v4 for echo code if needed)
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         # 如果仓库代码需要切换到某个特定版本，请在此处设置 ref
         with:
           # 例如：ref: v4
