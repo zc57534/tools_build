@@ -12,7 +12,7 @@ jobs:
     - name: Install Dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y wget unzip make gcc g++ musl-tools
+        sudo apt-get install -y wget unzip make gcc musl-tools
 
     - name: Download Android NDK r28
       run: wget https://dl.google.com/android/repository/android-ndk-r28-linux.zip
@@ -33,12 +33,13 @@ jobs:
       run: |
         COREUTILS_VERSION=9.4
         cd coreutils-${COREUTILS_VERSION}
-        CC=musl-gcc ./configure \
+        ./configure \
+          CC="gcc -static" \
           --host=aarch64-linux-android \
           --prefix=$HOME/output \
           --enable-static \
           --disable-nls
-        make -j$(nproc) CC=musl-gcc
+        make -j$(nproc) CC="gcc -static"
         make install
 
     - name: Check Binary
@@ -48,9 +49,8 @@ jobs:
         # 预期输出：ELF 64-bit LSB executable... statically linked
         # ldd should fail for static binaries
 
- 
     - name: Upload Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v2
       with:
         name: echo-static-arm64
-        path: /home/runner/output/bin/echo
+        path: $HOME/output/bin/echo
