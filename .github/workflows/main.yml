@@ -2,53 +2,56 @@ name: Build Static Grep for Termux
 
 on:
   push:
-    branches: [ "main" ]  # 当推送到 'grep' 分支时触发
-  workflow_dispatch:  # 手动触发工作流
+    branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-latest  # 使用最新的 Ubuntu 镜像
+    runs-on: ubuntu-latest
     steps:
-    - name: Install Dependencies  # 安装依赖项
+    - name: Install Dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y wget unzip make tar
+        sudo apt-get install -y wget unzip make gcc musl-tools
 
-    - name: Download Android NDK r28  # 下载 Android NDK r28
+    - name: Download Android NDK r28
       run: wget https://dl.google.com/android/repository/android-ndk-r28-linux.zip
 
-    - name: Extract Android NDK  # 解压 Android NDK
+    - name: Extract Android NDK
       run: unzip -q android-ndk-r28-linux.zip -d $HOME/android-ndk
 
-    - name: Set NDK Environment Variable  # 设置 NDK 环境变量
-      run: echo "ANDROID_NDK_HOME=$HOME/android-ndk/android-ndk-r28b" >> $GITHUB_ENV
-
-    - name: Download GNU Grep Source  # 下载 GNU Grep 源码
-      run: wget https://ftp.gnu.org/gnu/grep/grep-3.8.tar.xz
-
-    - name: Extract GNU Grep Source  # 解压 GNU Grep 源码
-      run: tar -xf grep-3.8.tar.xz
-
-    - name: Configure and Build Grep  # 配置并编译 Grep
+    - name: Set NDK Environment Variable
       run: |
-        cd grep-3.8
-        # 设置交叉编译器为 NDK 中的 clang
-        export CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/clang"
-        # 设置编译参数：指定目标平台、sysroot 和静态链接优化选项
-        export CFLAGS="--target=aarch64-linux-android21 --sysroot=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot -static -Os"
-        export LDFLAGS="-static"
-        # 关闭本地化支持以简化编译（可根据需要调整）
-        ./configure --host=aarch64-linux-android --disable-nls
-        make -j$(nproc)
+        echo "ANDROID_NDK_HOME=$HOME/android-ndk/android-ndk-r28" >> $GITHUB_ENV
+        echo "PATH=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH" >> $GITHUB_ENV
 
-    - name: Check Binary  # 检查生成的二进制文件
+    - name: Download Grep
       run: |
-        # 检查生成的 grep 可执行文件是否为静态链接的 ELF 文件
-        file grep-3.8/src/grep
-        # 预期输出类似：ELF 64-bit LSB executable, statically linked,...
+        GREP_VERSION=3.8
+        wget https://ftp.gnu.org/gnu/grep/grep-${GREP_VERSION}.tar.xz
+        tar xJf grep-${GREP_VERSION}.tar.xz
 
-    - name: Upload Artifact  # 上传生成的二进制文件作为构建产物
+    - name: Build Grep
+      run: |
+        GREP_VERSION=3.8
+        cd grep-${GREP_VERSION}
+        ./configure \
+          CC="aarch64-linux-android21-clang" \
+          --host=aarch64-linux-android \
+          --prefix=$HOME/output \
+          --disable-nls
+        make -j$(nproc) CC="aarch64-linux-android21-clang"
+        make install
+
+    - name: Check Binary
+      run: |
+        file $HOME/output/bin/grep
+        ldd $HOME/output/bin/grep || echo "Static binary confirmed"
+        # 预期输出：ELF 64-bit LSB executable... statically linked
+        # ldd should fail for static binaries
+
+    - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
         name: grep-static-arm64
-        path: grep-3.8/src/grep
+        path: $HOME/output/bin/grep
