@@ -1,40 +1,46 @@
-name: Build Static Git for Android (arm64)
+name: Build Static Git for Android
 
 on:
   workflow_dispatch:
 
 jobs:
-  build-git-android:
-    runs-on: ubuntu-latest
+  build:
+    runs-on: ubuntu-22.04
 
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Set up build environment
+    - name: Build Docker Image
       run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential autoconf automake libtool \
-          curl unzip pkg-config python3 python3-pip bzip2
+        docker build -t git-android-builder -f Dockerfile-git.android .
+
+    - name: Extract Binary
+      run: |
+        # 清理可能的旧容器
+        docker ps -aq | xargs -r docker rm -f &>/dev/null || true
         
-    - name: Set up NDK
-      run: |
-        NDK_VERSION=r25c
-        curl -Lo android-ndk.zip https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux.zip
-        unzip -q android-ndk.zip
-        rm android-ndk.zip
-        echo "NDK_HOME=$(pwd)/android-ndk-${NDK_VERSION}" >> $GITHUB_ENV
-        echo "TOOLCHAIN=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64" >> $GITHUB_ENV
+        # 创建临时容器并复制二进制文件
+        docker create --name temp-container git-android-builder
+        docker cp temp-container:/app/git ./git
+        docker rm -f temp-container
 
-    - name: Build Git for arm64
-      run: |
-        chmod +x ./build-static-git.sh
-        ./build-static-git.sh aarch64-linux-android 24
+        # 验证文件
+        if [ ! -f ./git ]; then
+          echo "错误：文件提取失败！"
+          exit 1
+        fi
+        
+        # 显示文件信息
+        file ./git
+        ls -lh ./git
+        
+        # 重命名文件
+        mv ./git ./git-android-arm64
 
-    - name: Upload artifact
+    - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
         name: git-android-arm64
-        path: |
-          git-aarch64-linux-android/git
-          git-aarch64-linux-android/git-*.tar.gz
+        path: ./git-android-arm64
+        retention-days: 7
