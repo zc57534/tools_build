@@ -60,14 +60,18 @@ download_source() {
     exit 1
 }
 
-# 1. 编译 zlib
+# 1. 编译 zlib (修复配置问题)
 echo "=== 编译 zlib $ZLIB_VERSION ==="
 download_source "zlib" "https://github.com/madler/zlib/releases/download/v$ZLIB_VERSION/zlib-$ZLIB_VERSION.tar.gz"
 tar xzf zlib-$ZLIB_VERSION.tar.gz
 cd zlib-$ZLIB_VERSION
-./configure --prefix=$INSTALL_DIR --static
-make -j$(nproc)
-make install
+
+# 修复配置问题：直接编译
+echo "使用直接编译方法..."
+make -j$(nproc) CC="$CC" CFLAGS="-O3 -fPIC -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN" AR="$AR" RANLIB="$RANLIB" static
+mkdir -p $INSTALL_DIR/lib $INSTALL_DIR/include
+cp libz.a $INSTALL_DIR/lib/
+cp zlib.h zconf.h $INSTALL_DIR/include/
 cd ..
 
 # 2. 编译 OpenSSL
