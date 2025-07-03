@@ -48,7 +48,7 @@ jobs:
         ./build-static-git.sh ${{ matrix.target }} ${{ matrix.api }}
 
     - name: Upload artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: git-android-${{ matrix.arch }}
         path: |
