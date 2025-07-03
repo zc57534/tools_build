@@ -1,0 +1,197 @@
+# vim: ft=dockerfile:
+# Dockerfile to build static Git for Android
+FROM ubuntu:22.04 as builder
+MAINTAINER Your Name
+
+# 设置环境变量
+ENV NDK_VERSION=r25c
+ENV HOST=aarch64-linux-android
+ENV API=24
+ENV PREFIX=/opt/static
+ENV PATH=/opt/toolchain/bin:$PATH
+
+# 安装构建依赖
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      unzip bzip2 make binutils autoconf automake autotools-dev \
+      libtool pkg-config git curl ca-certificates \
+      python3 python3-pip file gcc g++ && \
+    rm -rf /var/cache/apt/*
+
+# 设置工作目录
+WORKDIR /root
+
+# 下载并解压 NDK
+RUN curl -L -O https://dl.google.com/android/repository/android-ndk-$NDK_VERSION-linux.zip && \
+    unzip -q android-ndk-$NDK_VERSION-linux.zip && \
+    rm android-ndk-$NDK_VERSION-linux.zip && \
+    mv android-ndk-$NDK_VERSION android-ndk
+
+# 设置工具链
+ENV TOOLCHAIN=/root/android-ndk/toolchains/llvm/prebuilt/linux-x86_64
+ENV CC=$TOOLCHAIN/bin/${HOST}$API-clang
+ENV CXX=$TOOLCHAIN/bin/${HOST}$API-clang++
+ENV AR=$TOOLCHAIN/bin/llvm-ar
+ENV RANLIB=$TOOLCHAIN/bin/llvm-ranlib
+ENV STRIP=$TOOLCHAIN/bin/llvm-strip
+
+# 库版本
+ENV OPENSSL_VERSION=1.1.1w
+ENV LIBEXPAT_VERSION=2.7.0
+ENV ZLIB_VERSION=1.3.1
+ENV CARES_VERSION=1.34.4
+ENV LIBSSH2_VERSION=1.11.1
+ENV CURL_VERSION=8.4.0
+ENV GIT_VERSION=2.42.0
+
+# 创建安装目录
+RUN mkdir -p $PREFIX
+
+# 下载函数
+RUN echo 'download_source() { \
+    curl -L -f -o "$(basename $1)" "$1" || { echo "下载失败: $1"; exit 1; } \
+    }' > /usr/local/bin/download_source && \
+    chmod +x /usr/local/bin/download_source
+
+# 构建 zlib
+WORKDIR /root/build
+RUN download_source https://github.com/madler/zlib/releases/download/v$ZLIB_VERSION/zlib-$ZLIB_VERSION.tar.gz && \
+    tar xzf zlib-$ZLIB_VERSION.tar.gz && \
+    cd zlib-$ZLIB_VERSION && \
+    ./configure --prefix=$PREFIX --static && \
+    make -j$(nproc) && \
+    make install
+
+# 构建 OpenSSL
+WORKDIR /root/build
+RUN download_source https://www.openssl.org/source/openssl-$OPENSSL_VERSION.tar.gz && \
+    tar xzf openssl-$OPENSSL_VERSION.tar.gz && \
+    cd openssl-$OPENSSL_VERSION && \
+    ./Configure android-arm64 no-shared -D__ANDROID_API__=$API \
+        --prefix=$PREFIX \
+        -static && \
+    make -j$(nproc) && \
+    make install_sw
+
+# 构建 Expat
+WORKDIR /root/build
+RUN download_source https://github.com/libexpat/libexpat/releases/download/R_${LIBEXPAT_VERSION//./_}/expat-$LIBEXPAT_VERSION.tar.bz2 && \
+    tar xjf expat-$LIBEXPAT_VERSION.tar.bz2 && \
+    cd expat-$LIBEXPAT_VERSION && \
+    ./configure \
+        --host=$HOST \
+        --prefix=$PREFIX \
+        --enable-static \
+        --disable-shared \
+        --without-docbook \
+        --without-examples \
+        --without-tests && \
+    make -j$(nproc) install
+
+# 构建 c-ares
+WORKDIR /root/build
+RUN download_source https://github.com/c-ares/c-ares/releases/download/v$CARES_VERSION/c-ares-$CARES_VERSION.tar.gz && \
+    tar xzf c-ares-$CARES_VERSION.tar.gz && \
+    cd c-ares-$CARES_VERSION && \
+    ./configure \
+        --host=$HOST \
+        --prefix=$PREFIX \
+        --enable-static \
+        --disable-shared \
+        --disable-tests && \
+    make -j$(nproc) install
+
+# 构建 libssh2
+WORKDIR /root/build
+RUN download_source https://libssh2.org/download/libssh2-$LIBSSH2_VERSION.tar.bz2 && \
+    tar xjf libssh2-$LIBSSH2_VERSION.tar.bz2 && \
+    cd libssh2-$LIBSSH2_VERSION && \
+    ./configure \
+        --host=$HOST \
+        --prefix=$PREFIX \
+        --enable-static \
+        --disable-shared \
+        --with-crypto=openssl \
+        --with-libssl-prefix=$PREFIX \
+        --disable-examples-build && \
+    make -j$(nproc) install
+
+# 构建 libcurl
+WORKDIR /root/build
+RUN download_source https://curl.se/download/curl-$CURL_VERSION.tar.gz && \
+    tar xzf curl-$CURL_VERSION.tar.gz && \
+    cd curl-$CURL_VERSION && \
+    ./configure \
+        --host=$HOST \
+        --prefix=$PREFIX \
+        --with-openssl=$PREFIX \
+        --with-expat=$PREFIX \
+        --with-libssh2=$PREFIX \
+        --enable-ares=$PREFIX \
+        --disable-shared \
+        --enable-static \
+        --enable-http \
+        --enable-https \
+        --enable-ftp \
+        --enable-file \
+        --disable-ldap \
+        --disable-rtsp \
+        --disable-proxy \
+        --disable-dict \
+        --disable-telnet \
+        --disable-tftp \
+        --disable-pop3 \
+        --disable-imap \
+        --disable-smtp \
+        --disable-gopher \
+        --disable-manual \
+        --disable-ipv6 \
+        --disable-sspi \
+        --disable-crypto-auth \
+        --disable-ntlm-wb \
+        --disable-tls-srp \
+        --disable-unix-sockets \
+        --without-zstd \
+        --without-librtmp \
+        --without-libidn2 \
+        --without-libpsl \
+        --without-nghttp2 \
+        --without-nghttp3 \
+        --without-ngtcp2 \
+        --without-brotli \
+        --without-zlib \
+        --without-libgsasl && \
+    make -j$(nproc) install
+
+# 构建 Git
+WORKDIR /root/build
+RUN download_source https://mirrors.edge.kernel.org/pub/software/scm/git/git-$GIT_VERSION.tar.gz && \
+    tar xzf git-$GIT_VERSION.tar.gz && \
+    cd git-$GIT_VERSION && \
+    # 配置环境
+    export CFLAGS="-static -I$PREFIX/include -Os -fPIE" && \
+    export LDFLAGS="-static -L$PREFIX/lib -fPIE -pie" && \
+    export LIBS="-lz -lssl -lcrypto -lcurl -lssh2 -lcares -lexpat" && \
+    # 配置和编译
+    make configure && \
+    ./configure \
+        --host=$HOST \
+        --prefix=$PREFIX \
+        --with-openssl=$PREFIX \
+        --with-curl=$PREFIX \
+        --with-expat=$PREFIX \
+        --without-tcltk \
+        --without-python \
+        --without-iconv \
+        --without-gettext \
+        --without-perl \
+        NO_GETTEXT=YesPlease \
+        NO_REGEX=YesPlease \
+        NO_SYS_POLL_H=YesPlease \
+        NO_UNIX_SOCKETS=YesPlease && \
+    make -j$(nproc) NO_INSTALL_HARDLINKS=Yes && \
+    $STRIP git
+
+# 最终阶段
+FROM ubuntu:22.04
+COPY --from=builder /root/build/git-$GIT_VERSION/git /app/git
