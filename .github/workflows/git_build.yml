@@ -1,84 +1,56 @@
-name: Build Static Git for Android (aarch64)
+name: Build Static Git for Android
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - 'v*'
-
-env:
-  # 指定 Git 版本
-  GIT_VERSION: 2.50.0
-  # 目标 Android API level（最低支持）
-  ANDROID_API: 21
-  # NDK 版本，可以根据需要换成 r25c、r26b 等
-  NDK_VERSION: r25c
 
 jobs:
-  build:
+  build-git-android:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [arm, arm64, x86, x86_64]
+        include:
+          - arch: arm
+            target: arm-linux-androideabi
+            api: 24
+          - arch: arm64
+            target: aarch64-linux-android
+            api: 24
+          - arch: x86
+            target: i686-linux-android
+            api: 24
+          - arch: x86_64
+            target: x86_64-linux-android
+            api: 24
 
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
-      - name: Download Android NDK
-        run: |
-          NDK_ZIP="android-ndk-${NDK_VERSION}-linux.zip"
-          curl --fail -L "https://dl.google.com/android/repository/${NDK_ZIP}" -o "${NDK_ZIP}"
-          unzip -q "${NDK_ZIP}"
-          mv "android-ndk-${NDK_VERSION}" "$HOME/android-ndk"
+    - name: Set up build environment
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential autoconf automake libtool \
+          curl unzip pkg-config python3 python3-pip
+        
+    - name: Set up NDK
+      run: |
+        NDK_VERSION=r25c
+        curl -Lo android-ndk.zip https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux.zip
+        unzip -q android-ndk.zip
+        rm android-ndk.zip
+        echo "NDK_HOME=$(pwd)/android-ndk-${NDK_VERSION}" >> $GITHUB_ENV
+        echo "TOOLCHAIN=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64" >> $GITHUB_ENV
 
-      - name: Set up environment
-        run: |
-          export ANDROID_NDK=$HOME/android-ndk
-          # 交叉编译目标三元组
-          export TARGET=aarch64-linux-android
-          # 指定 Clang 前缀
-          export CC="$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/${TARGET}${ANDROID_API}-clang"
-          export CXX="$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/${TARGET}${ANDROID_API}-clang++"
-          export AR="$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar"
-          export RANLIB="$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib"
-          export LD="$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/ld.lld"
-          export SYSROOT="$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
+    - name: Build Git
+      run: |
+        chmod +x ./build-static-git.sh
+        ./build-static-git.sh ${{ matrix.target }} ${{ matrix.api }}
 
-          # 确认工具链可用
-          echo "CC = $CC"
-          "$CC" --version
-
-      - name: Build Git ${GIT_VERSION}
-        run: |
-          # 进入临时编译目录
-          mkdir -p build-git && cd build-git
-
-          # 下载源码
-          wget -q "https://www.kernel.org/pub/software/scm/git/git-${GIT_VERSION}.tar.gz"
-          tar xf "git-${GIT_VERSION}.tar.gz"
-          cd "git-${GIT_VERSION}"
-
-          # 生成 configure
-          make configure
-
-          # 配置静态编译
-          ./configure \
-            --host=${TARGET} \
-            --prefix=/src/output \
-            --with-openssl \
-            --without-tcltk \
-            CFLAGS="--sysroot=${SYSROOT} -O2 -fPIE -static" \
-            LDFLAGS="--sysroot=${SYSROOT} -static -fuse-ld=lld" \
-            NO_GETTEXT=YesPlease \
-            NO_TCLTK=YesPlease
-
-          # 并行编译与安装
-          make -j"$(nproc)"
-          make install
-
-          # 精简可执行文件
-          $ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip /src/output/bin/git*
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: git-android-aarch64
-          path: output/bin/
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: git-android-${{ matrix.arch }}
+        path: |
+          git-${{ matrix.target }}/git
+          git-${{ matrix.target }}/git-*.tar.gz
