@@ -32,7 +32,7 @@ jobs:
         ./build-static-git.sh aarch64-linux-android 24
 
     - name: Upload artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: git-android-arm64
         path: |
