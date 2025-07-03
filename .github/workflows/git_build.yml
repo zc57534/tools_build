@@ -1,4 +1,4 @@
-name: Build Static Git for Android
+name: Build Static Git for Android (arm64)
 
 on:
   workflow_dispatch:
@@ -6,22 +6,6 @@ on:
 jobs:
   build-git-android:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        arch: [arm, arm64, x86, x86_64]
-        include:
-          - arch: arm
-            target: arm-linux-androideabi
-            api: 24
-          - arch: arm64
-            target: aarch64-linux-android
-            api: 24
-          - arch: x86
-            target: i686-linux-android
-            api: 24
-          - arch: x86_64
-            target: x86_64-linux-android
-            api: 24
 
     steps:
     - name: Checkout repository
@@ -42,15 +26,15 @@ jobs:
         echo "NDK_HOME=$(pwd)/android-ndk-${NDK_VERSION}" >> $GITHUB_ENV
         echo "TOOLCHAIN=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64" >> $GITHUB_ENV
 
-    - name: Build Git
+    - name: Build Git for arm64
       run: |
         chmod +x ./build-static-git.sh
-        ./build-static-git.sh ${{ matrix.target }} ${{ matrix.api }}
+        ./build-static-git.sh aarch64-linux-android 24
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: git-android-${{ matrix.arch }}
+        name: git-android-arm64
         path: |
-          git-${{ matrix.target }}/git
-          git-${{ matrix.target }}/git-*.tar.gz
+          git-aarch64-linux-android/git
+          git-aarch64-linux-android/git-*.tar.gz
