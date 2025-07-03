@@ -1,11 +1,18 @@
-# .github/workflows/build-git-static.yml
-name: Build Static Git
+name: Build Static Git for Android (aarch64)
 
 on:
   workflow_dispatch:
   push:
     tags:
       - 'v*'
+
+env:
+  # 指定 Git 版本
+  GIT_VERSION: 2.50.0
+  # 目标 Android API level（最低支持）
+  ANDROID_API: 21
+  # NDK 版本，可以根据需要换成 r25c、r26b 等
+  NDK_VERSION: r25c
 
 jobs:
   build:
@@ -15,53 +22,63 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Build static Git in Alpine container
+      - name: Download Android NDK
         run: |
-          # 在 Alpine 容器中安装编译依赖并静态编译 Git
-          docker run --rm \
-            -v "${{ github.workspace }}":/src \
-            -w /src \
-            alpine:3.18 \
-            sh -eux -c '
-              # 安装 build-base、musl/glibc headers、OpenSSL/CURL/Expat 开发包
-              apk add --no-cache \
-                build-base \
-                musl-dev \
-                linux-headers \
-                openssl-dev \
-                curl-dev \
-                expat-dev \
-                perl-doc \
-                asciidoc \
-                xmlto \
-                docbook2x
+          NDK_ZIP="android-ndk-${NDK_VERSION}-linux.zip"
+          curl --fail -L "https://dl.google.com/android/repository/${NDK_ZIP}" -o "${NDK_ZIP}"
+          unzip -q "${NDK_ZIP}"
+          mv "android-ndk-${NDK_VERSION}" "$HOME/android-ndk"
 
-              # 下载并解压 Git 源码（可根据需要修改版本号）
-              GIT_VERSION=2.50.0
-              wget -q "https://mirrors.edge.kernel.org/pub/software/scm/git/git-${GIT_VERSION}.tar.gz"
-              tar xf "git-${GIT_VERSION}.tar.gz"
-              cd "git-${GIT_VERSION}"
+      - name: Set up environment
+        run: |
+          export ANDROID_NDK=$HOME/android-ndk
+          # 交叉编译目标三元组
+          export TARGET=aarch64-linux-android
+          # 指定 Clang 前缀
+          export CC="$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/${TARGET}${ANDROID_API}-clang"
+          export CXX="$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/${TARGET}${ANDROID_API}-clang++"
+          export AR="$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar"
+          export RANLIB="$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib"
+          export LD="$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/ld.lld"
+          export SYSROOT="$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
 
-              # 生成 configure 并配置静态编译
-              make configure
-              ./configure \
-                --prefix=/src/output \
-                --without-tcltk \
-                CFLAGS="-static -Os" \
-                LDFLAGS="-static" \
-                NO_GETTEXT=YesPlease
+          # 确认工具链可用
+          echo "CC = $CC"
+          "$CC" --version
 
-              # 编译并安装到 /src/output
-              make -j"$(nproc)"
-              make install
+      - name: Build Git ${GIT_VERSION}
+        run: |
+          # 进入临时编译目录
+          mkdir -p build-git && cd build-git
 
-              # 精简可执行文件
-              strip /src/output/bin/git*
-            '
+          # 下载源码
+          wget -q "https://www.kernel.org/pub/software/scm/git/git-${GIT_VERSION}.tar.gz"
+          tar xf "git-${GIT_VERSION}.tar.gz"
+          cd "git-${GIT_VERSION}"
 
-      - name: Upload compiled binaries
+          # 生成 configure
+          make configure
+
+          # 配置静态编译
+          ./configure \
+            --host=${TARGET} \
+            --prefix=/src/output \
+            --with-openssl \
+            --without-tcltk \
+            CFLAGS="--sysroot=${SYSROOT} -O2 -fPIE -static" \
+            LDFLAGS="--sysroot=${SYSROOT} -static -fuse-ld=lld" \
+            NO_GETTEXT=YesPlease \
+            NO_TCLTK=YesPlease
+
+          # 并行编译与安装
+          make -j"$(nproc)"
+          make install
+
+          # 精简可执行文件
+          $ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip /src/output/bin/git*
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v3
         with:
-          name: git-static
+          name: git-android-aarch64
           path: output/bin/
-
