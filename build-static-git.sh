@@ -11,9 +11,6 @@ fi
 TARGET=$1
 API=$2
 ARCH=${TARGET%-linux-android*}
-if [ "$TARGET" = "i686-linux-android" ]; then
-    ARCH="x86"
-fi
 
 # 设置环境变量
 export NDK_HOME=${NDK_HOME:-$HOME/android-ndk}
@@ -23,9 +20,6 @@ export CXX="$TOOLCHAIN/bin/${TARGET}${API}-clang++"
 export AR="$TOOLCHAIN/bin/llvm-ar"
 export RANLIB="$TOOLCHAIN/bin/llvm-ranlib"
 export STRIP="$TOOLCHAIN/bin/llvm-strip"
-export LD="$TOOLCHAIN/bin/ld"
-export AS="$TOOLCHAIN/bin/llvm-as"
-export NM="$TOOLCHAIN/bin/llvm-nm"
 
 # 工作目录
 BUILD_DIR=$(pwd)/build-$TARGET
@@ -74,7 +68,7 @@ make -j$(nproc)
 make install_sw
 cd ..
 
-# 3. 编译 libcurl (可选，用于 HTTPS 支持)
+# 3. 编译 libcurl (用于 HTTPS 支持)
 echo "编译 libcurl..."
 CURL_VER=8.4.0
 CURL_DIR=$(download_source https://curl.se/download/curl-$CURL_VER.tar.gz)
